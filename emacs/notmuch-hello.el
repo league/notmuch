@@ -28,7 +28,7 @@
 (require 'notmuch-mua)
 
 (declare-function notmuch-search "notmuch"
-		  (&optional query oldest-first target-thread target-line continuation))
+		  (&optional query sort-order target-thread target-line continuation))
 (declare-function notmuch-poll "notmuch" ())
 (declare-function notmuch-tree "notmuch-tree"
 		  (&optional query query-context target buffer-name open-target unthreaded))
@@ -422,7 +422,7 @@ supported for \"Customized queries section\" items."
       (setq search (string-trim search))
       (let ((history-delete-duplicates t))
 	(add-to-history 'notmuch-search-history search)))
-    (notmuch-search search notmuch-search-oldest-first)))
+    (notmuch-search search notmuch-search-sort-order)))
 
 (defun notmuch-hello-add-saved-search (widget &rest _event)
   (let ((search (widget-value (widget-get widget :parent)))
@@ -486,7 +486,7 @@ diagonal."
     (notmuch-unthreaded (widget-get widget :notmuch-search-terms)))
    (t
     (notmuch-search (widget-get widget :notmuch-search-terms)
-		    (widget-get widget :notmuch-search-oldest-first)))))
+		    (widget-get widget :notmuch-search-sort-order)))))
 
 (defun notmuch-saved-search-count (search)
   (car (process-lines notmuch-command "count" search)))
@@ -627,7 +627,7 @@ with `notmuch-hello-query-counts'."
 		     (oldest-first (cl-case (plist-get elem :sort-order)
 				     (newest-first nil)
 				     (oldest-first t)
-				     (otherwise notmuch-search-oldest-first)))
+				     (otherwise notmuch-search-sort-order)))
 		     (search-type (plist-get elem :search-type))
 		     (msg-count (plist-get elem :count)))
 		(widget-insert (format "%8s "
@@ -635,7 +635,7 @@ with `notmuch-hello-query-counts'."
 		(widget-create 'push-button
 			       :notify #'notmuch-hello-widget-search
 			       :notmuch-search-terms query
-			       :notmuch-search-oldest-first oldest-first
+			       :notmuch-search-sort-order oldest-first
 			       :notmuch-search-type search-type
 			       name)
 		(setq column-indent

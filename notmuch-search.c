@@ -782,6 +782,10 @@ static const notmuch_opt_desc_t common_options[] = {
     { .opt_keyword = &search_context.sort, .name = "sort", .keywords =
 	  (notmuch_keyword_t []){ { "oldest-first", NOTMUCH_SORT_OLDEST_FIRST },
 				  { "newest-first", NOTMUCH_SORT_NEWEST_FIRST },
+				  { "from-ascending", NOTMUCH_SORT_FROM_ASCENDING },
+				  { "from-descending", NOTMUCH_SORT_FROM_DESCENDING },
+				  { "subject-ascending", NOTMUCH_SORT_SUBJECT_ASCENDING },
+				  { "subject-descending", NOTMUCH_SORT_SUBJECT_DESCENDING },
 				  { 0, 0 } } },
     { .opt_keyword = &search_context.format_sel, .name = "format", .keywords =
 	  (notmuch_keyword_t []){ { "json", NOTMUCH_FORMAT_JSON },

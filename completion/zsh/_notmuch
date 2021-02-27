@@ -177,7 +177,7 @@ _notmuch_address() {
   _arguments -S \
     '--format=[set output format]:output format:(json sexp text text0)' \
     '--format-version=[set output format version]:format version: ' \
-    '--sort=[sort results]:sorting:((newest-first\:"reverse chronological order" oldest-first\:"chronological order"))' \
+    '--sort=[sort results]:sorting:((newest-first\:"reverse chronological order" oldest-first\:"chronological order" from-ascending\:"by from address, in ascending order" from-descending\:"by from address, in descending order" subject-ascending\:"by subject, in ascending order" subject-descending\:"by subject, in descending order"))' \
     '--output=[select output format]:output format:(sender recipients count address)' \
     '--deduplicate=[deduplicate results]:deduplication mode:(no mailbox address)' \
     '--exclude=[respect excluded tags setting]:exclude tags:(true false)' \

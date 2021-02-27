@@ -412,7 +412,7 @@ _notmuch_search()
 	    return
 	    ;;
 	--sort)
-	    COMPREPLY=( $( compgen -W "newest-first oldest-first" -- "${cur}" ) )
+	    COMPREPLY=( $(compgen -W "newest-first oldest-first from-ascending from-descending subject-ascending subject-descending" -- "${cur}" ) )
 	    return
 	    ;;
 	--exclude)

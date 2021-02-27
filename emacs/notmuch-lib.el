@@ -94,16 +94,16 @@ $PATH)."
   :type 'string
   :group 'notmuch-external)
 
-(defcustom notmuch-search-oldest-first t
+(defcustom notmuch-search-sort-order 'newest-first
   "Show the oldest mail first when searching.
 
 This variable defines the default sort order for displaying
 search results. Note that any filtered searches created by
 `notmuch-search-filter' retain the search order of the parent
 search."
-  :type 'boolean
+  :type 'symbol
   :group 'notmuch-search)
-(make-variable-buffer-local 'notmuch-search-oldest-first)
+(make-variable-buffer-local 'notmuch-search-sort-order)
 
 (defcustom notmuch-poll-script nil
   "[Deprecated] Command to run to incorporate new mail into the notmuch database.

@@ -332,6 +332,18 @@ _notmuch_query_search_documents (notmuch_query_t *query,
 	    break;
 	case NOTMUCH_SORT_UNSORTED:
 	    break;
+	case NOTMUCH_SORT_FROM_ASCENDING:
+	    enquire.set_sort_by_value (NOTMUCH_VALUE_FROM, false);
+	    break;
+	case NOTMUCH_SORT_FROM_DESCENDING:
+	    enquire.set_sort_by_value (NOTMUCH_VALUE_FROM, true);
+	    break;
+	case NOTMUCH_SORT_SUBJECT_ASCENDING:
+	    enquire.set_sort_by_value (NOTMUCH_VALUE_SUBJECT, false);
+	    break;
+	case NOTMUCH_SORT_SUBJECT_DESCENDING:
+	    enquire.set_sort_by_value (NOTMUCH_VALUE_SUBJECT, true);
+	    break;
 	}
 
 	if (_debug_query ()) {

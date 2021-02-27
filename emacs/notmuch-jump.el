@@ -42,11 +42,9 @@ fast way to jump to a saved search from anywhere in Notmuch."
 	(when key
 	  (let ((name (plist-get saved-search :name))
 		(query (plist-get saved-search :query))
-		(oldest-first
-		 (cl-case (plist-get saved-search :sort-order)
-		   (newest-first nil)
-		   (oldest-first t)
-		   (otherwise (default-value 'notmuch-search-oldest-first)))))
+		(sort-order
+		 (or (plist-get saved-search :sort-order)
+		     (default-value 'notmuch-search-sort-order))))
 	    (push (list key name
 			(cond
 			 ((eq (plist-get saved-search :search-type) 'tree)
@@ -54,7 +52,7 @@ fast way to jump to a saved search from anywhere in Notmuch."
 			 ((eq (plist-get saved-search :search-type) 'unthreaded)
 			  `(lambda () (notmuch-unthreaded ',query)))
 			 (t
-			  `(lambda () (notmuch-search ',query ',oldest-first)))))
+			  `(lambda () (notmuch-search ',query ',sort-order)))))
 		  action-map)))))
     (setq action-map (nreverse action-map))
     (if action-map

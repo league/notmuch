@@ -78,7 +78,7 @@ Supported options for **address** include
         matching messages. If ``--output=count`` is specified, include all
         variants in the count.
 
-``--sort=``\ (**newest-first**\ \|\ **oldest-first**)
+``--sort=``\ (**newest-first**\ \|\ **oldest-first**\ \|\ **from-ascending**\ \|\ **from-descending**\ \|\ **subject-ascending**\ \|\ **subject-descending**)
     This option can be used to present results in either chronological
     order (**oldest-first**) or reverse chronological order
     (**newest-first**).
