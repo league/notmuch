@@ -104,6 +104,9 @@ unset CDPATH
 
 unset GREP_OPTIONS
 
+unset XDG_CONFIG_HOME
+unset XDG_DATA_HOME
+
 # For emacsclient
 unset ALTERNATE_EDITOR
 
