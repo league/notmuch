@@ -10,3 +10,4 @@ jobs:
       - uses: actions/checkout@v2.4.0
       - uses: cachix/install-nix-action@v16
       - run: nix flake check
+      - run: nix build .#notmuch.{out,emacs,man,info}
