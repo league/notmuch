@@ -209,8 +209,25 @@ _choose_database_path (void *ctx,
 	}
     }
     if (! *database_path) {
+	notmuch_status_t status;
+
 	*database_path = _xdg_dir (ctx, "XDG_DATA_HOME", ".local/share", profile);
-	*split = true;
+	status = _db_dir_exists (*database_path, message);
+	if (status) {
+	    *database_path = NULL;
+	} else {
+	    *split = true;
+	}
+    }
+
+    if (! *database_path) {
+	notmuch_status_t status;
+
+	*database_path = talloc_asprintf (ctx, "%s/mail", getenv ("HOME"));
+	status = _db_dir_exists (*database_path, message);
+	if (status) {
+	    *database_path = NULL;
+	}
     }
 
     if (*database_path == NULL) {
@@ -325,6 +342,37 @@ _init_libs ()
     }
 }
 
+static void
+_load_database_state (notmuch_database_t *notmuch)
+{
+    std::string last_thread_id;
+    std::string last_mod;
+
+    notmuch->last_doc_id = notmuch->xapian_db->get_lastdocid ();
+    last_thread_id = notmuch->xapian_db->get_metadata ("last_thread_id");
+    if (last_thread_id.empty ()) {
+	notmuch->last_thread_id = 0;
+    } else {
+	const char *str;
+	char *end;
+
+	str = last_thread_id.c_str ();
+	notmuch->last_thread_id = strtoull (str, &end, 16);
+	if (*end != '\0')
+	    INTERNAL_ERROR ("Malformed database last_thread_id: %s", str);
+    }
+
+    /* Get current highest revision number. */
+    last_mod = notmuch->xapian_db->get_value_upper_bound (
+	NOTMUCH_VALUE_LAST_MOD);
+    if (last_mod.empty ())
+	notmuch->revision = 0;
+    else
+	notmuch->revision = Xapian::sortable_unserialise (last_mod);
+    notmuch->uuid = talloc_strdup (
+	notmuch, notmuch->xapian_db->get_uuid ().c_str ());
+}
+
 static notmuch_status_t
 _finish_open (notmuch_database_t *notmuch,
 	      const char *profile,
@@ -339,8 +387,6 @@ _finish_open (notmuch_database_t *notmuch,
     const char *database_path = notmuch_database_get_path (notmuch);
 
     try {
-	std::string last_thread_id;
-	std::string last_mod;
 
 	if (mode == NOTMUCH_DATABASE_MODE_READ_WRITE) {
 	    notmuch->writable_xapian_db = new Xapian::WritableDatabase (notmuch->xapian_path,
@@ -384,29 +430,7 @@ _finish_open (notmuch_database_t *notmuch,
 	    goto DONE;
 	}
 
-	notmuch->last_doc_id = notmuch->xapian_db->get_lastdocid ();
-	last_thread_id = notmuch->xapian_db->get_metadata ("last_thread_id");
-	if (last_thread_id.empty ()) {
-	    notmuch->last_thread_id = 0;
-	} else {
-	    const char *str;
-	    char *end;
-
-	    str = last_thread_id.c_str ();
-	    notmuch->last_thread_id = strtoull (str, &end, 16);
-	    if (*end != '\0')
-		INTERNAL_ERROR ("Malformed database last_thread_id: %s", str);
-	}
-
-	/* Get current highest revision number. */
-	last_mod = notmuch->xapian_db->get_value_upper_bound (
-	    NOTMUCH_VALUE_LAST_MOD);
-	if (last_mod.empty ())
-	    notmuch->revision = 0;
-	else
-	    notmuch->revision = Xapian::sortable_unserialise (last_mod);
-	notmuch->uuid = talloc_strdup (
-	    notmuch, notmuch->xapian_db->get_uuid ().c_str ());
+	_load_database_state (notmuch);
 
 	notmuch->query_parser = new Xapian::QueryParser;
 	notmuch->term_gen = new Xapian::TermGenerator;
@@ -733,6 +757,8 @@ notmuch_database_reopen (notmuch_database_t *notmuch,
 							   DB_ACTION);
 	    }
 	}
+
+	_load_database_state (notmuch);
     } catch (const Xapian::Error &error) {
 	if (! notmuch->exception_reported) {
 	    _notmuch_database_log (notmuch, "Error: A Xapian exception reopening database: %s\n",

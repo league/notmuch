@@ -3,6 +3,9 @@ name: "Build"
 "on":
   pull_request:
   push:
+    branches:
+      - nix
+      - sort
   schedule:
     # Weekly
     - cron: '0 15 * * FRI'
