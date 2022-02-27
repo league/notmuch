@@ -13,6 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2.4.0
       - uses: cachix/install-nix-action@v16
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - run: |
           if [[ "${{ matrix.nixpkgs }}" == "pinned" ]]; then
               nix flake metadata
