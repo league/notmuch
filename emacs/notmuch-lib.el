@@ -94,7 +94,7 @@ $PATH)."
   :type 'string
   :group 'notmuch-external)
 
-(defcustom notmuch-search-sort-order 'newest-first
+(defcustom notmuch-search-sort-order 'oldest-first
   "Show the oldest mail first when searching.
 
 This variable defines the default sort order for displaying
