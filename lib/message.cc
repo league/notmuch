@@ -93,8 +93,10 @@ _notmuch_message_destructor (notmuch_message_t *message)
 #define LOG_XAPIAN_EXCEPTION(message, error) _log_xapian_exception (__location__, message, error)
 
 static void
-_log_xapian_exception (const char *where, notmuch_message_t *message,  const Xapian::Error error) {
+_log_xapian_exception (const char *where, notmuch_message_t *message,  const Xapian::Error error)
+{
     notmuch_database_t *notmuch = notmuch_message_get_database (message);
+
     _notmuch_database_log (notmuch,
 			   "A Xapian exception occurred at %s: %s\n",
 			   where,
@@ -286,7 +288,8 @@ _notmuch_message_create_for_message_id (notmuch_database_t *notmuch,
 
 	doc_id = _notmuch_database_generate_doc_id (notmuch);
     } catch (const Xapian::Error &error) {
-	_notmuch_database_log (notmuch_message_get_database (message), "A Xapian exception occurred creating message: %s\n",
+	_notmuch_database_log (notmuch_message_get_database (message),
+			       "A Xapian exception occurred creating message: %s\n",
 			       error.get_msg ().c_str ());
 	notmuch->exception_reported = true;
 	*status_ret = NOTMUCH_PRIVATE_STATUS_XAPIAN_EXCEPTION;
@@ -318,6 +321,7 @@ _notmuch_message_get_term (notmuch_message_t *message,
 	return NULL;
 
     const std::string &term = *i;
+
     if (strncmp (term.c_str (), prefix, prefix_len))
 	return NULL;
 
@@ -455,7 +459,8 @@ _notmuch_message_ensure_metadata (notmuch_message_t *message, void *field)
 	    /* all the way without an exception */
 	    break;
 	} catch (const Xapian::DatabaseModifiedError &error) {
-	    notmuch_status_t status = _notmuch_database_reopen (message->notmuch);
+	    notmuch_status_t status = notmuch_database_reopen (message->notmuch,
+							       NOTMUCH_DATABASE_MODE_READ_ONLY);
 	    if (status != NOTMUCH_STATUS_SUCCESS)
 		INTERNAL_ERROR ("unhandled error from notmuch_database_reopen: %s\n",
 				notmuch_status_to_string (status));
@@ -1097,7 +1102,7 @@ _notmuch_message_ensure_filename_list (notmuch_message_t *message)
 
 	*colon = '\0';
 
-	db_path = notmuch_database_get_path (message->notmuch);
+	db_path = notmuch_config_get (message->notmuch, NOTMUCH_CONFIG_MAIL_ROOT);
 
 	directory = _notmuch_database_get_directory_path (local,
 							  message->notmuch,
@@ -1351,11 +1356,10 @@ notmuch_status_t
 _notmuch_message_delete (notmuch_message_t *message)
 {
     notmuch_status_t status;
-    const char *mid, *tid, *query_string;
+    const char *mid, *tid;
     notmuch_message_t *ghost;
     notmuch_private_status_t private_status;
     notmuch_database_t *notmuch;
-    notmuch_query_t *query;
     unsigned int count = 0;
     bool is_ghost;
 
@@ -1377,16 +1381,33 @@ _notmuch_message_delete (notmuch_message_t *message)
     if (is_ghost)
 	return NOTMUCH_STATUS_SUCCESS;
 
-    query_string = talloc_asprintf (message, "thread:%s", tid);
-    query = notmuch_query_create (notmuch, query_string);
-    if (query == NULL)
-	return NOTMUCH_STATUS_OUT_OF_MEMORY;
-    status = notmuch_query_count_messages (query, &count);
-    if (status) {
-	notmuch_query_destroy (query);
-	return status;
-    }
+    /* look for a non-ghost message in the same thread */
+    try {
+	Xapian::PostingIterator thread_doc, thread_doc_end;
+	Xapian::PostingIterator mail_doc, mail_doc_end;
 
+	_notmuch_database_find_doc_ids (message->notmuch, "thread", tid, &thread_doc,
+					&thread_doc_end);
+	_notmuch_database_find_doc_ids (message->notmuch, "type", "mail", &mail_doc, &mail_doc_end);
+
+	while (count == 0 &&
+	       thread_doc != thread_doc_end &&
+	       mail_doc != mail_doc_end) {
+	    thread_doc.skip_to (*mail_doc);
+	    if (thread_doc != thread_doc_end) {
+		if (*thread_doc == *mail_doc) {
+		    count++;
+		} else {
+		    mail_doc.skip_to (*thread_doc);
+		    if (mail_doc != mail_doc_end && *thread_doc == *mail_doc)
+			count++;
+		}
+	    }
+	}
+    } catch (Xapian::Error &error) {
+	LOG_XAPIAN_EXCEPTION (message, error);
+	return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
+    }
     if (count > 0) {
 	/* reintroduce a ghost in its place because there are still
 	 * other active messages in this thread: */
@@ -1405,27 +1426,21 @@ _notmuch_message_delete (notmuch_message_t *message)
 	notmuch_message_destroy (ghost);
 	status = COERCE_STATUS (private_status, "Error converting to ghost message");
     } else {
-	/* the thread is empty; drop all ghost messages from it */
-	notmuch_messages_t *messages;
-	status = _notmuch_query_search_documents (query,
-						  "ghost",
-						  &messages);
-	if (status == NOTMUCH_STATUS_SUCCESS) {
-	    notmuch_status_t last_error = NOTMUCH_STATUS_SUCCESS;
-	    while (notmuch_messages_valid (messages)) {
-		message = notmuch_messages_get (messages);
-		status = _notmuch_message_delete (message);
-		if (status) /* we'll report the last failure we see;
-					 * if there is more than one failure, we
-					 * forget about previous ones */
-		    last_error = status;
-		notmuch_message_destroy (message);
-		notmuch_messages_move_to_next (messages);
+	/* the thread now contains only ghosts: delete them */
+	try {
+	    Xapian::PostingIterator doc, doc_end;
+
+	    _notmuch_database_find_doc_ids (message->notmuch, "thread", tid, &doc, &doc_end);
+
+	    for (; doc != doc_end; doc++) {
+		message->notmuch->writable_xapian_db->delete_document (*doc);
 	    }
-	    status = last_error;
+	} catch (Xapian::Error &error) {
+	    LOG_XAPIAN_EXCEPTION (message, error);
+	    return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
 	}
+
     }
-    notmuch_query_destroy (query);
     return status;
 }
 
@@ -1765,6 +1780,7 @@ notmuch_message_has_maildir_flag (notmuch_message_t *message, char flag)
 {
     notmuch_status_t status;
     notmuch_bool_t ret;
+
     status = notmuch_message_has_maildir_flag_st (message, flag, &ret);
     if (status)
 	return FALSE;
@@ -1778,14 +1794,14 @@ notmuch_message_has_maildir_flag_st (notmuch_message_t *message,
 				     notmuch_bool_t *is_set)
 {
     notmuch_status_t status;
-    
+
     if (! is_set)
 	return NOTMUCH_STATUS_NULL_POINTER;
 
     status = _ensure_maildir_flags (message, false);
     if (status)
 	return status;
-    
+
     *is_set =  message->maildir_flags && (strchr (message->maildir_flags, flag) != NULL);
     return NOTMUCH_STATUS_SUCCESS;
 }
@@ -2079,8 +2095,8 @@ notmuch_message_remove_all_tags (notmuch_message_t *message)
 	private_status = _notmuch_message_remove_term (message, "tag", tag);
 	if (private_status) {
 	    return COERCE_STATUS (private_status,
-				   "_notmuch_message_remove_term return unexpected value: %d\n",
-				   private_status);
+				  "_notmuch_message_remove_term return unexpected value: %d\n",
+				  private_status);
 	}
     }
 
@@ -2202,8 +2218,8 @@ notmuch_message_reindex (notmuch_message_t *message,
     orig_thread_id = notmuch_message_get_thread_id (message);
     if (! orig_thread_id) {
 	/* the following is correct as long as there is only one reason
-	   n_m_get_thread_id returns NULL
-	*/
+	 * n_m_get_thread_id returns NULL
+	 */
 	return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
     }
 

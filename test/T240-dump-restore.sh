@@ -65,7 +65,7 @@ test_begin_subtest "Accumulate with new tags"
 test_expect_success \
   'notmuch restore --input=dump.expected &&
   notmuch restore --accumulate --input=dump-ABC_DEF.expected &&
-  notmuch dump >  OUTPUT.$test_count &&
+  notmuch dump > OUTPUT.$test_count &&
   notmuch restore --input=dump.expected &&
   test_cmp dump-ABC_DEF.expected OUTPUT.$test_count'
 
@@ -235,7 +235,7 @@ test_expect_equal_file EXPECTED.$test_count OUTPUT.$test_count
 test_begin_subtest 'format=batch-tag, checking encoded output'
 NOTMUCH_DUMP_TAGS --format=batch-tag -- from:cworth |\
 	 awk "{ print \"+$enc1 +$enc2 +$enc3 -- \" \$5 }" > EXPECTED.$test_count
-NOTMUCH_DUMP_TAGS --format=batch-tag -- from:cworth  > OUTPUT.$test_count
+NOTMUCH_DUMP_TAGS --format=batch-tag -- from:cworth > OUTPUT.$test_count
 test_expect_equal_file EXPECTED.$test_count OUTPUT.$test_count
 
 test_begin_subtest 'restoring sane tags'
@@ -322,6 +322,7 @@ EOF
 
 test_expect_equal_file EXPECTED OUTPUT
 
+backup_database
 test_begin_subtest 'roundtripping random message-ids and tags'
 
     ${TEST_DIRECTORY}/random-corpus --config-path=${NOTMUCH_CONFIG} \
@@ -338,7 +339,7 @@ test_begin_subtest 'roundtripping random message-ids and tags'
 	 sort > OUTPUT.$test_count
 
 test_expect_equal_file EXPECTED.$test_count OUTPUT.$test_count
+restore_database
 
 test_done
 
-# Note the database is "poisoned" for sup format at this point.

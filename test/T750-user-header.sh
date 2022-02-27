@@ -2,13 +2,6 @@
 test_description='indexing user specified headers'
 . $(dirname "$0")/test-lib.sh || exit 1
 
-test_begin_subtest "error adding user header before initializing DB"
-notmuch config set index.header.List List-Id 2>&1 | notmuch_dir_sanitize > OUTPUT
-cat <<EOF > EXPECTED
-Error opening database at MAIL_DIR/.notmuch: No such file or directory
-EOF
-test_expect_equal_file EXPECTED OUTPUT
-
 add_email_corpus
 
 notmuch search '*' | notmuch_search_sanitize > initial-threads
@@ -95,6 +88,24 @@ test_begin_subtest "index user header"
 notmuch config set index.header.List "List-Id"
 notmuch reindex '*'
 notmuch search --output=files List:notmuch | notmuch_search_files_sanitize | sort > OUTPUT
+cat <<EOF > EXPECTED
+MAIL_DIR/bar/baz/05:2,
+MAIL_DIR/bar/baz/23:2,
+MAIL_DIR/bar/baz/24:2,
+MAIL_DIR/bar/cur/20:2,
+MAIL_DIR/bar/new/21:2,
+MAIL_DIR/bar/new/22:2,
+MAIL_DIR/foo/cur/08:2,
+MAIL_DIR/foo/new/03:2,
+MAIL_DIR/new/04:2,
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "index user header, config from file"
+field_name="Test"
+printf "\n[index]\nheader.${field_name} = List-Id\n" >> notmuch-config
+notmuch reindex '*'
+notmuch search --output=files ${field_name}:notmuch | notmuch_search_files_sanitize | sort > OUTPUT
 cat <<EOF > EXPECTED
 MAIL_DIR/bar/baz/05:2,
 MAIL_DIR/bar/baz/23:2,

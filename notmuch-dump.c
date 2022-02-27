@@ -339,7 +339,7 @@ notmuch_database_dump (notmuch_database_t *notmuch,
 	output = NULL;
 	goto DONE;
     } else
-        output = NULL;
+	output = NULL;
 
     if (output_file_name) {
 	ret = rename (tempname, output_file_name);
@@ -361,15 +361,10 @@ notmuch_database_dump (notmuch_database_t *notmuch,
 }
 
 int
-notmuch_dump_command (notmuch_config_t *config, int argc, char *argv[])
+notmuch_dump_command (notmuch_database_t *notmuch, int argc, char *argv[])
 {
-    notmuch_database_t *notmuch;
     const char *query_str = NULL;
     int ret;
-
-    if (notmuch_database_open (notmuch_config_get_database_path (config),
-			       NOTMUCH_DATABASE_MODE_READ_WRITE, &notmuch))
-	return EXIT_FAILURE;
 
     notmuch_exit_if_unmatched_db_uuid (notmuch);
 

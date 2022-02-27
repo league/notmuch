@@ -1,4 +1,4 @@
-;;; notmuch-tag.el --- tag messages within emacs
+;;; notmuch-tag.el --- tag messages within emacs  -*- lexical-binding: t -*-
 ;;
 ;; Copyright © Damien Cassou
 ;; Copyright © Carl Worth
@@ -23,10 +23,6 @@
 
 ;;; Code:
 
-(require 'cl-lib)
-(eval-when-compile
-  (require 'pcase))
-
 (require 'crm)
 
 (require 'notmuch-lib)
@@ -36,6 +32,8 @@
 (declare-function notmuch-show-tag "notmuch-show" (tag-changes))
 (declare-function notmuch-tree-tag "notmuch-tree" (tag-changes))
 (declare-function notmuch-jump "notmuch-jump" (action-map prompt))
+
+;;; Keys
 
 (define-widget 'notmuch-tag-key-type 'list
   "A single key tagging binding."
@@ -68,21 +66,23 @@ The key `notmuch-tag-jump-reverse-key' (k by default) should not
 be used (either as a key, or as the start of a key sequence) as
 it is already bound: it switches the menu to a menu of the
 reverse tagging operations. The reverse of a tagging operation is
-the same list of individual tag-ops but with `+tag` replaced by
-`-tag` and vice versa.
+the same list of individual tag-ops but with `+tag' replaced by
+`-tag' and vice versa.
 
 If setting this variable outside of customize then it should be a
 list of triples (lists of three elements). Each triple should be
 of the form (key-binding tagging-operations name). KEY-BINDING
 can be a single character or a key sequence; TAGGING-OPERATIONS
 should either be a list of individual tag operations each of the
-form `+tag` or `-tag`, or the variable name of a variable that is
+form `+tag' or `-tag', or the variable name of a variable that is
 a list of tagging operations; NAME should be a name for the
 tagging operation, if omitted or empty than then name is taken
 from TAGGING-OPERATIONS."
   :tag "List of tagging bindings"
   :type '(repeat notmuch-tag-key-type)
   :group 'notmuch-tag)
+
+;;; Faces and Formats
 
 (define-widget 'notmuch-tag-format-type 'lazy
   "Customize widget for notmuch-tag-format and friends."
@@ -116,7 +116,7 @@ from TAGGING-OPERATIONS."
   '((t :foreground "red"))
   "Default face used for the unread tag.
 
-Used in the default value of `notmuch-tag-formats`."
+Used in the default value of `notmuch-tag-formats'."
   :group 'notmuch-faces)
 
 (defface notmuch-tag-flagged
@@ -128,7 +128,7 @@ Used in the default value of `notmuch-tag-formats`."
      (:foreground "blue")))
   "Face used for the flagged tag.
 
-Used in the default value of `notmuch-tag-formats`."
+Used in the default value of `notmuch-tag-formats'."
   :group 'notmuch-faces)
 
 (defcustom notmuch-tag-formats
@@ -137,20 +137,23 @@ Used in the default value of `notmuch-tag-formats`."
      (notmuch-tag-format-image-data tag (notmuch-tag-star-icon))))
   "Custom formats for individual tags.
 
-This is an association list that maps from tag name regexps to
-lists of formatting expressions.  The first entry whose car
-regexp-matches a tag will be used to format that tag.  The regexp
-is implicitly anchored, so to match a literal tag name, just use
-that tag name (if it contains special regexp characters like
-\".\" or \"*\", these have to be escaped).  The cdr of the
-matching entry gives a list of Elisp expressions that modify the
-tag.  If the list is empty, the tag will simply be hidden.
-Otherwise, each expression will be evaluated in order: for the
-first expression, the variable `tag' will be bound to the tag
-name; for each later expression, the variable `tag' will be bound
-to the result of the previous expression.  In this way, each
+This is an association list of the form ((MATCH EXPR...)...),
+mapping tag name regexps to lists of formatting expressions.
+
+The first entry whose MATCH regexp-matches a tag is used to
+format that tag.  The regexp is implicitly anchored, so to match
+a literal tag name, just use that tag name (if it contains
+special regexp characters like \".\" or \"*\", these have to be
+escaped).
+
+The cdr of the matching entry gives a list of Elisp expressions
+that modify the tag.  If the list is empty, the tag is simply
+hidden.  Otherwise, each expression EXPR is evaluated in order:
+for the first expression, the variable `tag' is bound to the tag
+name; for each later expression, the variable `tag' is bound to
+the result of the previous expression.  In this way, each
 expression can build on the formatting performed by the previous
-expression.  The result of the last expression will displayed in
+expression.  The result of the last expression is displayed in
 place of the tag.
 
 For example, to replace a tag with another string, simply use
@@ -170,7 +173,7 @@ with images."
     (t :inverse-video t))
   "Face used to display deleted tags.
 
-Used in the default value of `notmuch-tag-deleted-formats`."
+Used in the default value of `notmuch-tag-deleted-formats'."
   :group 'notmuch-faces)
 
 (defcustom notmuch-tag-deleted-formats
@@ -178,7 +181,7 @@ Used in the default value of `notmuch-tag-deleted-formats`."
     (".*" (notmuch-apply-face tag `notmuch-tag-deleted)))
   "Custom formats for tags when deleted.
 
-For deleted tags the formats in `notmuch-tag-formats` are applied
+For deleted tags the formats in `notmuch-tag-formats' are applied
 first and then these formats are applied on top; that is `tag'
 passed to the function is the tag with all these previous
 formattings applied. The formatted can access the original
@@ -199,14 +202,14 @@ See `notmuch-tag-formats' for full documentation."
   '((t :underline "green"))
   "Default face used for added tags.
 
-Used in the default value for `notmuch-tag-added-formats`."
+Used in the default value for `notmuch-tag-added-formats'."
   :group 'notmuch-faces)
 
 (defcustom notmuch-tag-added-formats
   '((".*" (notmuch-apply-face tag 'notmuch-tag-added)))
   "Custom formats for tags when added.
 
-For added tags the formats in `notmuch-tag-formats` are applied
+For added tags the formats in `notmuch-tag-formats' are applied
 first and then these formats are applied on top.
 
 To disable special formatting of added tags, set this variable to
@@ -216,6 +219,8 @@ See `notmuch-tag-formats' for full documentation."
   :group 'notmuch-show
   :group 'notmuch-faces
   :type 'notmuch-tag-format-type)
+
+;;; Icons
 
 (defun notmuch-tag-format-image-data (tag data)
   "Replace TAG with image DATA, if available.
@@ -270,6 +275,8 @@ This can be used with `notmuch-tag-format-image-data'."
   </g>
 </svg>")
 
+;;; Format Handling
+
 (defvar notmuch-tag--format-cache (make-hash-table :test 'equal)
   "Cache of tag format lookup.  Internal to `notmuch-tag-format-tag'.")
 
@@ -277,32 +284,34 @@ This can be used with `notmuch-tag-format-image-data'."
   "Clear the internal cache of tag formats."
   (clrhash notmuch-tag--format-cache))
 
-(defun notmuch-tag--get-formats (tag format-alist)
+(defun notmuch-tag--get-formats (tag alist)
   "Find the first item whose car regexp-matches TAG."
   (save-match-data
     ;; Don't use assoc-default since there's no way to distinguish a
     ;; missing key from a present key with a null cdr.
-    (cl-assoc tag format-alist
+    (cl-assoc tag alist
 	      :test (lambda (tag key)
 		      (and (eq (string-match key tag) 0)
 			   (= (match-end 0) (length tag)))))))
 
-(defun notmuch-tag--do-format (tag formatted-tag formats)
+(defun notmuch-tag--do-format (bare-tag tag formats)
   "Apply a tag-formats entry to TAG."
   (cond ((null formats)		;; - Tag not in `formats',
-	 formatted-tag)	       	;;   the format is the tag itself.
+	 tag)			;;   the format is the tag itself.
 	((null (cdr formats))	;; - Tag was deliberately hidden,
 	 nil)			;;   no format must be returned
 	(t
 	 ;; Tag was found and has formats, we must apply all the
 	 ;; formats.  TAG may be null so treat that as a special case.
-	 (let ((bare-tag tag)
-	       (tag (copy-sequence (or formatted-tag ""))))
+	 (let ((return-tag (copy-sequence (or tag ""))))
 	   (dolist (format (cdr formats))
-	     (setq tag (eval format)))
-	   (if (and (null formatted-tag) (equal tag ""))
+	     (setq return-tag
+		   (eval format
+			 `((bare-tag . ,bare-tag)
+			   (tag . ,return-tag)))))
+	   (if (and (null tag) (equal return-tag ""))
 	       nil
-	     tag)))))
+	     return-tag)))))
 
 (defun notmuch-tag-format-tag (tags orig-tags tag)
   "Format TAG according to `notmuch-tag-formats'.
@@ -347,6 +356,8 @@ changed (the normal case) are shown using formats from
      face
      t)))
 
+;;; Hooks
+
 (defcustom notmuch-before-tag-hook nil
   "Hooks that are run before tags of a message are modified.
 
@@ -369,18 +380,18 @@ the messages that were tagged."
   :options '(notmuch-hl-line-mode)
   :group 'notmuch-hooks)
 
+;;; User Input
+
 (defvar notmuch-select-tag-history nil
-  "Variable to store minibuffer history for
-`notmuch-select-tag-with-completion' function.")
+  "Minibuffer history of `notmuch-select-tag-with-completion' function.")
 
 (defvar notmuch-read-tag-changes-history nil
-  "Variable to store minibuffer history for
-`notmuch-read-tag-changes' function.")
+  "Minibuffer history of `notmuch-read-tag-changes' function.")
 
 (defun notmuch-tag-completions (&rest search-terms)
   "Return a list of tags for messages matching SEARCH-TERMS.
 
-Returns all tags if no search terms are given."
+Return all tags if no search terms are given."
   (unless search-terms
     (setq search-terms (list "*")))
   (split-string
@@ -391,14 +402,15 @@ Returns all tags if no search terms are given."
    "\n+" t))
 
 (defun notmuch-select-tag-with-completion (prompt &rest search-terms)
-  (let ((tag-list (apply #'notmuch-tag-completions search-terms)))
-    (completing-read prompt tag-list nil nil nil 'notmuch-select-tag-history)))
+  (completing-read prompt
+		   (apply #'notmuch-tag-completions search-terms)
+		   nil nil nil 'notmuch-select-tag-history))
 
 (defun notmuch-read-tag-changes (current-tags &optional prompt initial-input)
   "Prompt for tag changes in the minibuffer.
 
-CURRENT-TAGS is a list of tags that are present on the message or
-messages to be changed.  These are offered as tag removal
+CURRENT-TAGS is a list of tags that are present on the message
+or messages to be changed.  These are offered as tag removal
 completions.  CURRENT-TAGS may contain duplicates.  PROMPT, if
 non-nil, is the query string to present in the minibuffer.  It
 defaults to \"Tags\".  INITIAL-INPUT, if non-nil, will be the
@@ -429,6 +441,8 @@ initial input in the minibuffer."
 		nil nil initial-input
 		'notmuch-read-tag-changes-history))))
 
+;;; Tagging
+
 (defun notmuch-update-tags (tags tag-changes)
   "Return a copy of TAGS with additions and removals from TAG-CHANGES.
 
@@ -438,9 +452,9 @@ present or a \"-\" to indicate that the tag should be removed
 from TAGS if present."
   (let ((result-tags (copy-sequence tags)))
     (dolist (tag-change tag-changes)
-      (let ((op (string-to-char tag-change))
-	    (tag (unless (string= tag-change "") (substring tag-change 1))))
-	(cl-case op
+      (let ((tag (and (not (string-empty-p tag-change))
+		      (substring tag-change 1))))
+	(cl-case (aref tag-change 0)
 	  (?+ (unless (member tag result-tags)
 		(push tag result-tags)))
 	  (?- (setq result-tags (delete tag result-tags)))
@@ -466,13 +480,12 @@ messages instead of running (notmuch-call-notmuch-process \"tag\" ..)
 directly, so that hooks specified in notmuch-before-tag-hook and
 notmuch-after-tag-hook will be run."
   ;; Perform some validation
-  (mapc (lambda (tag-change)
-	  (unless (string-match-p "^[-+]\\S-+$" tag-change)
-	    (error "Tag must be of the form `+this_tag' or `-that_tag'")))
-	tag-changes)
+  (dolist (tag-change tag-changes)
+    (unless (string-match-p "^[-+]\\S-+$" tag-change)
+      (error "Tag must be of the form `+this_tag' or `-that_tag'")))
   (unless query
     (error "Nothing to tag!"))
-  (unless (null tag-changes)
+  (when tag-changes
     (run-hooks 'notmuch-before-tag-hook)
     (if (<= (length query) notmuch-tag-argument-limit)
 	(apply 'notmuch-call-notmuch-process "tag"
@@ -506,7 +519,7 @@ begin with a \"+\" or a \"-\". If REVERSE is non-nil, replace all
 Creates and displays a jump menu for the tagging operations
 specified in `notmuch-tagging-keys'. If REVERSE is set then it
 offers a menu of the reverses of the operations specified in
-`notmuch-tagging-keys'; i.e. each `+tag` is replaced by `-tag`
+`notmuch-tagging-keys'; i.e. each `+tag' is replaced by `-tag'
 and vice versa."
   ;; In principle this function is simple, but it has to deal with
   ;; lots of cases: different modes (search/show/tree), whether a name
@@ -524,7 +537,7 @@ and vice versa."
 		      (symbol-value tag)
 		    tag))
 	     (tag-change (if reverse
-			     (notmuch-tag-change-list tag 't)
+			     (notmuch-tag-change-list tag t)
 			   tag))
 	     (name (or (and (not (string= name ""))
 			    name)
@@ -547,7 +560,7 @@ and vice versa."
     (setq action-map (nreverse action-map))
     (notmuch-jump action-map "Tag: ")))
 
-;;
+;;; _
 
 (provide 'notmuch-tag)
 

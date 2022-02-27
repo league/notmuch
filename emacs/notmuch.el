@@ -1,4 +1,4 @@
-;;; notmuch.el --- run notmuch within emacs
+;;; notmuch.el --- run notmuch within emacs  -*- lexical-binding: t -*-
 ;;
 ;; Copyright © Carl Worth
 ;;
@@ -65,10 +65,10 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl-lib))
-
 (require 'mm-view)
 (require 'message)
+
+(require 'hl-line)
 
 (require 'notmuch-lib)
 (require 'notmuch-tag)
@@ -79,6 +79,8 @@
 (require 'notmuch-maildir-fcc)
 (require 'notmuch-message)
 (require 'notmuch-parser)
+
+;;; Options
 
 (defcustom notmuch-search-result-format
   `(("date" . "%12s ")
@@ -112,8 +114,14 @@ there will be called at other points of notmuch execution."
   :type 'file
   :group 'notmuch)
 
-(defvar notmuch-query-history nil
-  "Variable to store minibuffer history for notmuch queries.")
+(defcustom notmuch-search-hook '(notmuch-hl-line-mode)
+  "List of functions to call when notmuch displays the search results."
+  :type 'hook
+  :options '(notmuch-hl-line-mode)
+  :group 'notmuch-search
+  :group 'notmuch-hooks)
+
+;;; Mime Utilities
 
 (defun notmuch-foreach-mime-part (function mm-handle)
   (cond ((stringp (car mm-handle))
@@ -151,25 +159,13 @@ there will be called at other points of notmuch execution."
 	    (mm-save-part p))))
    mm-handle))
 
-(require 'hl-line)
-
-(defun notmuch-hl-line-mode ()
-  (prog1 (hl-line-mode)
-    (when hl-line-overlay
-      (overlay-put hl-line-overlay 'priority 1))))
-
-(defcustom notmuch-search-hook '(notmuch-hl-line-mode)
-  "List of functions to call when notmuch displays the search results."
-  :type 'hook
-  :options '(notmuch-hl-line-mode)
-  :group 'notmuch-search
-  :group 'notmuch-hooks)
+;;; Keymap
 
 (defvar notmuch-search-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map notmuch-common-keymap)
     (define-key map "x" 'notmuch-bury-or-kill-this-buffer)
-    (define-key map (kbd "<DEL>") 'notmuch-search-scroll-down)
+    (define-key map (kbd "DEL") 'notmuch-search-scroll-down)
     (define-key map "b" 'notmuch-search-scroll-down)
     (define-key map " " 'notmuch-search-scroll-up)
     (define-key map "<" 'notmuch-search-first-thread)
@@ -194,7 +190,17 @@ there will be called at other points of notmuch execution."
     (define-key map "U" 'notmuch-unthreaded-from-search-current-query)
     map)
   "Keymap for \"notmuch search\" buffers.")
-(fset 'notmuch-search-mode-map notmuch-search-mode-map)
+
+;;; Internal Variables
+
+(defvar notmuch-query-history nil
+  "Variable to store minibuffer history for notmuch queries.")
+
+(defvar-local notmuch-search-query-string nil)
+(defvar-local notmuch-search-target-thread nil)
+(defvar-local notmuch-search-target-line nil)
+
+;;; Stashing
 
 (defvar notmuch-search-stash-map
   (let ((map (make-sparse-keymap)))
@@ -213,13 +219,9 @@ there will be called at other points of notmuch execution."
 (defun notmuch-stash-query ()
   "Copy current query to kill-ring."
   (interactive)
-  (notmuch-common-do-stash (notmuch-search-get-query)))
+  (notmuch-common-do-stash notmuch-search-query-string))
 
-(defvar notmuch-search-query-string)
-(defvar notmuch-search-target-thread)
-(defvar notmuch-search-target-line)
-
-(defvar notmuch-search-disjunctive-regexp      "\\<[oO][rR]\\>")
+;;; Movement
 
 (defun notmuch-search-scroll-up ()
   "Move forward through search results by one window's worth."
@@ -271,6 +273,8 @@ there will be called at other points of notmuch execution."
   "Select the first thread in the search results."
   (interactive)
   (goto-char (point-min)))
+
+;;; Faces
 
 (defface notmuch-message-summary-face
   `((((class color) (background light))
@@ -343,7 +347,7 @@ there will be called at other points of notmuch execution."
   "Face used in search mode face for flagged threads.
 
 This face is the default value for the \"flagged\" tag in
-`notmuch-search-line-faces`."
+`notmuch-search-line-faces'."
   :group 'notmuch-search
   :group 'notmuch-faces)
 
@@ -353,9 +357,11 @@ This face is the default value for the \"flagged\" tag in
   "Face used in search mode for unread threads.
 
 This face is the default value for the \"unread\" tag in
-`notmuch-search-line-faces`."
+`notmuch-search-line-faces'."
   :group 'notmuch-search
   :group 'notmuch-faces)
+
+;;; Mode
 
 (define-derived-mode notmuch-search-mode fundamental-mode "notmuch-search"
   "Major mode displaying results of a notmuch search.
@@ -387,12 +393,8 @@ new, global search.
 Complete list of currently available key bindings:
 
 \\{notmuch-search-mode-map}"
-  (make-local-variable 'notmuch-search-query-string)
-  (make-local-variable 'notmuch-search-oldest-first)
-  (make-local-variable 'notmuch-search-target-thread)
-  (make-local-variable 'notmuch-search-target-line)
   (setq notmuch-buffer-refresh-function #'notmuch-search-refresh-view)
-  (set (make-local-variable 'scroll-preserve-screen-position) t)
+  (setq-local scroll-preserve-screen-position t)
   (add-to-invisibility-spec (cons 'ellipsis t))
   (setq truncate-lines t)
   (setq buffer-read-only t)
@@ -400,6 +402,8 @@ Complete list of currently available key bindings:
 	#'notmuch-search-imenu-prev-index-position-function)
   (setq imenu-extract-index-name-function
 	#'notmuch-search-imenu-extract-index-name-function))
+
+;;; Search Results
 
 (defun notmuch-search-get-result (&optional pos)
   "Return the result object for the thread at POS (or point).
@@ -473,7 +477,7 @@ If BARE is set then do not prefix with \"thread:\"."
 (defun notmuch-search-find-stable-query ()
   "Return the stable queries for the current thread.
 
-This returns a list (MATCHED-QUERY UNMATCHED-QUERY) for the
+Return a list (MATCHED-QUERY UNMATCHED-QUERY) for the
 matched and unmatched messages in the current thread."
   (plist-get (notmuch-search-get-result) :query))
 
@@ -515,17 +519,16 @@ With a prefix argument, invert the default value of
 `notmuch-show-only-matching-messages' when displaying the
 thread."
   (interactive "P")
-  (let ((thread-id (notmuch-search-find-thread-id))
-	(subject (notmuch-search-find-subject)))
-    (if (> (length thread-id) 0)
+  (let ((thread-id (notmuch-search-find-thread-id)))
+    (if thread-id
 	(notmuch-show thread-id
 		      elide-toggle
 		      (current-buffer)
 		      notmuch-search-query-string
 		      ;; Name the buffer based on the subject.
-		      (concat "*"
-			      (truncate-string-to-width subject 30 nil nil t)
-			      "*"))
+		      (format "*%s*" (truncate-string-to-width
+				      (notmuch-search-find-subject)
+				      30 nil nil t)))
       (message "End of search results."))))
 
 (defun notmuch-tree-from-search-current-query ()
@@ -550,18 +553,21 @@ thread."
 (defun notmuch-search-reply-to-thread (&optional prompt-for-sender)
   "Begin composing a reply-all to the entire current thread in a new buffer."
   (interactive "P")
-  (let ((message-id (notmuch-search-find-thread-id)))
-    (notmuch-mua-new-reply message-id prompt-for-sender t)))
+  (notmuch-mua-new-reply (notmuch-search-find-thread-id)
+			 prompt-for-sender t))
 
 (defun notmuch-search-reply-to-thread-sender (&optional prompt-for-sender)
   "Begin composing a reply to the entire current thread in a new buffer."
   (interactive "P")
-  (let ((message-id (notmuch-search-find-thread-id)))
-    (notmuch-mua-new-reply message-id prompt-for-sender nil)))
+  (notmuch-mua-new-reply (notmuch-search-find-thread-id)
+			 prompt-for-sender nil))
+
+;;; Tags
 
 (defun notmuch-search-set-tags (tags &optional pos)
-  (let ((new-result (plist-put (notmuch-search-get-result pos) :tags tags)))
-    (notmuch-search-update-result new-result pos)))
+  (notmuch-search-update-result
+   (plist-put (notmuch-search-get-result pos) :tags tags)
+   pos))
 
 (defun notmuch-search-get-tags (&optional pos)
   (plist-get (notmuch-search-get-result pos) :tags))
@@ -571,12 +577,12 @@ thread."
     (notmuch-search-foreach-result beg end
       (lambda (pos)
 	(setq output (append output (notmuch-search-get-tags pos)))))
-    output))
+    (delete-dups output)))
 
 (defun notmuch-search-interactive-tag-changes (&optional initial-input)
   "Prompt for tag changes for the current thread or region.
 
-Returns (TAG-CHANGES REGION-BEGIN REGION-END)."
+Return (TAG-CHANGES REGION-BEGIN REGION-END)."
   (pcase-let ((`(,beg ,end) (notmuch-interactive-region)))
     (list (notmuch-read-tag-changes (notmuch-search-get-tags-region beg end)
 				    (if (= beg end) "Tag thread" "Tag region")
@@ -640,6 +646,8 @@ This function advances the next thread when finished."
   (when (eq beg end)
     (notmuch-search-next-thread)))
 
+;;; Search Results
+
 (defun notmuch-search-update-result (result &optional pos)
   "Replace the result object of the thread at POS (or point) by
 RESULT and redraw it.
@@ -668,7 +676,7 @@ of the result."
 			  (min init-point (- new-end 1)))))
 	(goto-char new-point)))))
 
-(defun notmuch-search-process-sentinel (proc msg)
+(defun notmuch-search-process-sentinel (proc _msg)
   "Add a message to let user know when \"notmuch search\" exits."
   (let ((buffer (process-buffer proc))
 	(status (process-status proc))
@@ -694,7 +702,7 @@ of the result."
 		    (throw 'return nil))
 		  (when (and atbob
 			     (not (string= notmuch-search-target-thread "found")))
-		    (set 'never-found-target-thread t)))))
+		    (setq never-found-target-thread t)))))
 	    (when (and never-found-target-thread
 		       notmuch-search-target-line)
 	      (goto-char (point-min))
@@ -806,13 +814,13 @@ non-authors is found, assume that all of the authors match."
 	(setq invisible-string (notmuch-search-author-propertize invisible-string)))
       ;; If there is any invisible text, add it as a tooltip to the
       ;; visible text.
-      (unless (string= invisible-string "")
+      (unless (string-empty-p invisible-string)
 	(setq visible-string
 	      (propertize visible-string
 			  'help-echo (concat "..." invisible-string))))
       ;; Insert the visible and, if present, invisible author strings.
       (insert visible-string)
-      (unless (string= invisible-string "")
+      (unless (string-empty-p invisible-string)
 	(let ((start (point))
 	      overlay)
 	  (insert invisible-string)
@@ -871,8 +879,7 @@ sets the :orig-tag property."
   "Process and filter the output of \"notmuch search\"."
   (let ((results-buf (process-buffer proc))
 	(parse-buf (process-get proc 'parse-buf))
-	(inhibit-read-only t)
-	done)
+	(inhibit-read-only t))
     (when (buffer-live-p results-buf)
       (with-current-buffer parse-buf
 	;; Insert new data
@@ -881,6 +888,8 @@ sets the :orig-tag property."
 	  (insert string))
 	(notmuch-sexp-parse-partial-list 'notmuch-search-append-result
 					 results-buf)))))
+
+;;; Commands (and some helper functions used by them)
 
 (defun notmuch-search-tag-all (tag-changes)
   "Add/remove tags from all messages in current search buffer.
@@ -924,40 +933,39 @@ See `notmuch-tag' for information on the format of TAG-CHANGES."
   "Read a notmuch-query from the minibuffer with completion.
 
 PROMPT is the string to prompt with."
-  (let*
-      ((all-tags
-	(mapcar (lambda (tag) (notmuch-escape-boolean-term tag))
-		(process-lines notmuch-command "search" "--output=tags" "*")))
-       (completions
-	(append (list "folder:" "path:" "thread:" "id:" "date:" "from:" "to:"
-		      "subject:" "attachment:")
-		(mapcar (lambda (tag) (concat "tag:" tag)) all-tags)
-		(mapcar (lambda (tag) (concat "is:" tag)) all-tags)
-		(mapcar (lambda (mimetype) (concat "mimetype:" mimetype))
-			(mailcap-mime-types)))))
-    (let ((keymap (copy-keymap minibuffer-local-map))
-	  (current-query (cl-case major-mode
-			   (notmuch-search-mode (notmuch-search-get-query))
-			   (notmuch-show-mode (notmuch-show-get-query))
-			   (notmuch-tree-mode (notmuch-tree-get-query))))
-	  (minibuffer-completion-table
-	   (completion-table-dynamic
-	    (lambda (string)
-	      ;; generate a list of possible completions for the current input
-	      (cond
-	       ;; this ugly regexp is used to get the last word of the input
-	       ;; possibly preceded by a '('
-	       ((string-match "\\(^\\|.* (?\\)\\([^ ]*\\)$" string)
-		(mapcar (lambda (compl)
-			  (concat (match-string-no-properties 1 string) compl))
-			(all-completions (match-string-no-properties 2 string)
-					 completions)))
-	       (t (list string)))))))
-      ;; this was simpler than convincing completing-read to accept spaces:
-      (define-key keymap (kbd "TAB") 'minibuffer-complete)
-      (let ((history-delete-duplicates t))
-	(read-from-minibuffer prompt nil keymap nil
-			      'notmuch-search-history current-query nil)))))
+  (let* ((all-tags
+	  (mapcar (lambda (tag) (notmuch-escape-boolean-term tag))
+		  (process-lines notmuch-command "search" "--output=tags" "*")))
+	 (completions
+	  (append (list "folder:" "path:" "thread:" "id:" "date:" "from:" "to:"
+			"subject:" "attachment:")
+		  (mapcar (lambda (tag) (concat "tag:" tag)) all-tags)
+		  (mapcar (lambda (tag) (concat "is:" tag)) all-tags)
+		  (mapcar (lambda (mimetype) (concat "mimetype:" mimetype))
+			  (mailcap-mime-types))))
+	 (keymap (copy-keymap minibuffer-local-map))
+	 (current-query (cl-case major-mode
+			  (notmuch-search-mode (notmuch-search-get-query))
+			  (notmuch-show-mode (notmuch-show-get-query))
+			  (notmuch-tree-mode (notmuch-tree-get-query))))
+	 (minibuffer-completion-table
+	  (completion-table-dynamic
+	   (lambda (string)
+	     ;; Generate a list of possible completions for the current input.
+	     (cond
+	      ;; This ugly regexp is used to get the last word of the input
+	      ;; possibly preceded by a '('.
+	      ((string-match "\\(^\\|.* (?\\)\\([^ ]*\\)$" string)
+	       (mapcar (lambda (compl)
+			 (concat (match-string-no-properties 1 string) compl))
+		       (all-completions (match-string-no-properties 2 string)
+					completions)))
+	      (t (list string)))))))
+    ;; This was simpler than convincing completing-read to accept spaces:
+    (define-key keymap (kbd "TAB") 'minibuffer-complete)
+    (let ((history-delete-duplicates t))
+      (read-from-minibuffer prompt nil keymap nil
+			    'notmuch-search-history current-query nil))))
 
 (defun notmuch-search-get-query ()
   "Return the current query in this search buffer."
@@ -995,22 +1003,17 @@ the configured default sort order."
     (if no-display
 	(set-buffer buffer)
       (pop-to-buffer-same-window buffer))
-    ;; avoid wiping out third party buffer-local variables in the case
-    ;; where we're just refreshing or changing the sort order of an
-    ;; existing search results buffer
-    (unless (eq major-mode 'notmuch-search-mode)
-      (notmuch-search-mode))
+    (notmuch-search-mode)
     ;; Don't track undo information for this buffer
-    (set 'buffer-undo-list t)
-    (set 'notmuch-search-query-string query)
-    (set 'notmuch-search-oldest-first oldest-first)
-    (set 'notmuch-search-target-thread target-thread)
-    (set 'notmuch-search-target-line target-line)
+    (setq buffer-undo-list t)
+    (setq notmuch-search-query-string query)
+    (setq notmuch-search-oldest-first oldest-first)
+    (setq notmuch-search-target-thread target-thread)
+    (setq notmuch-search-target-line target-line)
     (notmuch-tag-clear-cache)
-    (let ((proc (get-buffer-process (current-buffer)))
-	  (inhibit-read-only t))
-      (when proc
-	(error "notmuch search process already running for query `%s'" query))
+    (when (get-buffer-process buffer)
+      (error "notmuch search process already running for query `%s'" query))
+    (let ((inhibit-read-only t))
       (erase-buffer)
       (goto-char (point-min))
       (save-excursion
@@ -1020,12 +1023,12 @@ the configured default sort order."
 		     (if oldest-first
 			 "--sort=oldest-first"
 		       "--sort=newest-first")
-		     query))
-	      ;; Use a scratch buffer to accumulate partial output.
-	      ;; This buffer will be killed by the sentinel, which
-	      ;; should be called no matter how the process dies.
-	      (parse-buf (generate-new-buffer " *notmuch search parse*")))
-	  (process-put proc 'parse-buf parse-buf)
+		     query)))
+	  ;; Use a scratch buffer to accumulate partial output.
+	  ;; This buffer will be killed by the sentinel, which
+	  ;; should be called no matter how the process dies.
+	  (process-put proc 'parse-buf
+		       (generate-new-buffer " *notmuch search parse*"))
 	  (set-process-filter proc 'notmuch-search-process-filter)
 	  (set-process-query-on-exit-flag proc nil))))
     (run-hooks 'notmuch-search-hook)))
@@ -1039,13 +1042,12 @@ the new search results, then point will be placed on the same
 thread. Otherwise, point will be moved to attempt to be in the
 same relative position within the new buffer."
   (interactive)
-  (let ((target-line (line-number-at-pos))
-	(oldest-first notmuch-search-oldest-first)
-	(target-thread (notmuch-search-find-thread-id 'bare))
-	(query notmuch-search-query-string))
-    ;; notmuch-search erases the current buffer.
-    (notmuch-search query oldest-first target-thread target-line t)
-    (goto-char (point-min))))
+  (notmuch-search notmuch-search-query-string
+		  notmuch-search-oldest-first
+		  (notmuch-search-find-thread-id 'bare)
+		  (line-number-at-pos)
+		  t)
+  (goto-char (point-min)))
 
 (defun notmuch-search-toggle-order ()
   "Toggle the current search order.
@@ -1053,15 +1055,13 @@ same relative position within the new buffer."
 This command toggles the sort order for the current search. The
 default sort order is defined by `notmuch-search-oldest-first'."
   (interactive)
-  (set 'notmuch-search-oldest-first (not notmuch-search-oldest-first))
+  (setq notmuch-search-oldest-first (not notmuch-search-oldest-first))
   (notmuch-search-refresh-view))
 
 (defun notmuch-group-disjunctive-query-string (query-string)
   "Group query if it contains a complex expression.
-
-Enclose QUERY-STRING in parentheses if it matches
-`notmuch-search-disjunctive-regexp'."
-  (if (string-match-p notmuch-search-disjunctive-regexp query-string)
+Enclose QUERY-STRING in parentheses if contains \"OR\" operators."
+  (if (string-match-p "\\<[oO][rR]\\>" query-string)
       (concat "( " query-string " )")
     query-string))
 
@@ -1080,10 +1080,10 @@ current search results AND the additional query string provided."
 		    notmuch-search-oldest-first)))
 
 (defun notmuch-search-filter-by-tag (tag)
-  "Filter the current search results based on a single tag.
+  "Filter the current search results based on a single TAG.
 
-Runs a new search matching only messages that match both the
-current search results AND that are tagged with the given tag."
+Run a new search matching only messages that match the current
+search results and that are also tagged with the given TAG."
   (interactive
    (list (notmuch-select-tag-with-completion "Filter by tag: "
 					     notmuch-search-query-string)))
@@ -1103,7 +1103,7 @@ current search results AND that are tagged with the given tag."
   (notmuch-hello))
 
 (defun notmuch-interesting-buffer (b)
-  "Is the current buffer of interest to a notmuch user?"
+  "Whether the current buffer's major-mode is a notmuch mode."
   (with-current-buffer b
     (memq major-mode '(notmuch-show-mode
 		       notmuch-search-mode
@@ -1115,8 +1115,8 @@ current search results AND that are tagged with the given tag."
 (defun notmuch-cycle-notmuch-buffers ()
   "Cycle through any existing notmuch buffers (search, show or hello).
 
-If the current buffer is the only notmuch buffer, bury it. If no
-notmuch buffers exist, run `notmuch'."
+If the current buffer is the only notmuch buffer, bury it.
+If no notmuch buffers exist, run `notmuch'."
   (interactive)
   (let (start first)
     ;; If the current buffer is a notmuch buffer, remember it and then
@@ -1137,22 +1137,30 @@ notmuch buffers exist, run `notmuch'."
 	  (pop-to-buffer-same-window first))
       (notmuch))))
 
+;;; Integrations
+;;;; Hl-line Support
+
+(defun notmuch-hl-line-mode ()
+  (prog1 (hl-line-mode)
+    (when hl-line-overlay
+      (overlay-put hl-line-overlay 'priority 1))))
+
 ;;;; Imenu Support
 
 (defun notmuch-search-imenu-prev-index-position-function ()
   "Move point to previous message in notmuch-search buffer.
-This function is used as a value for
-`imenu-prev-index-position-function'."
+Used as`imenu-prev-index-position-function' in notmuch buffers."
   (notmuch-search-previous-thread))
 
 (defun notmuch-search-imenu-extract-index-name-function ()
   "Return imenu name for line at point.
-This function is used as a value for
-`imenu-extract-index-name-function'.  Point should be at the
-beginning of the line."
-  (let ((subject (notmuch-search-find-subject))
-	(author (notmuch-search-find-authors)))
-    (format "%s (%s)" subject author)))
+Used as `imenu-extract-index-name-function' in notmuch buffers.
+Point should be at the beginning of the line."
+  (format "%s (%s)"
+	  (notmuch-search-find-subject)
+	  (notmuch-search-find-authors)))
+
+;;; _
 
 (setq mail-user-agent 'notmuch-user-agent)
 

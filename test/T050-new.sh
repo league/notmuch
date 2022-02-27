@@ -324,10 +324,10 @@ test_expect_equal "$output" ""
 
 OLDCONFIG=$(notmuch config get new.tags)
 
-test_begin_subtest "Empty tags in new.tags are forbidden"
+test_begin_subtest "Empty tags in new.tags are ignored"
 notmuch config set new.tags "foo;;bar"
-output=$(NOTMUCH_NEW --debug 2>&1)
-test_expect_equal "$output" "Error: tag '' in new.tags: empty tag forbidden"
+output=$(NOTMUCH_NEW --quiet 2>&1)
+test_expect_equal "$output" ""
 
 test_begin_subtest "Tags starting with '-' in new.tags are forbidden"
 notmuch config set new.tags "-foo;bar"
@@ -339,11 +339,25 @@ test_expect_code 1 "NOTMUCH_NEW --debug 2>&1"
 
 notmuch config set new.tags $OLDCONFIG
 
+test_begin_subtest "Long directory names don't cause rescan"
+test_subtest_known_broken
+printf -v name 'z%.0s' {1..234}
+generate_message [dir]=$name
+NOTMUCH_NEW > OUTPUT
+notmuch new >> OUTPUT
+rm -r ${MAIL_DIR}/${name}
+notmuch new >> OUTPUT
+cat <<EOF > EXPECTED
+Added 1 new message to the database.
+No new mail.
+No new mail. Removed 1 message.
+EOF
+test_expect_equal_file EXPECTED OUTPUT
 
 test_begin_subtest "Xapian exception: read only files"
-chmod u-w  ${MAIL_DIR}/.notmuch/xapian/*.*
+chmod u-w ${MAIL_DIR}/.notmuch/xapian/*.*
 output=$(NOTMUCH_NEW --debug 2>&1 | sed 's/: .*$//' )
-chmod u+w  ${MAIL_DIR}/.notmuch/xapian/*.*
+chmod u+w ${MAIL_DIR}/.notmuch/xapian/*.*
 test_expect_equal "$output" "A Xapian exception occurred opening database"
 
 
@@ -385,8 +399,8 @@ test_begin_subtest "reference loop does not crash"
 test_expect_code 0 "notmuch show --format=json id:mid-loop-12@example.org id:mid-loop-21@example.org > OUTPUT"
 
 test_begin_subtest "reference loop ordered by date"
-threadid=$(notmuch search --output=threads  id:mid-loop-12@example.org)
-notmuch show --format=mbox $threadid | grep '^Date'  > OUTPUT
+threadid=$(notmuch search --output=threads id:mid-loop-12@example.org)
+notmuch show --format=mbox $threadid | grep '^Date' > OUTPUT
 cat <<EOF > EXPECTED
 Date: Thu, 16 Jun 2016 22:14:41 -0400
 Date: Fri, 17 Jun 2016 22:14:41 -0400

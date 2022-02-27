@@ -19,10 +19,6 @@
  */
 
 #include "database-private.h"
-#include "parse-time-vrp.h"
-#include "query-fp.h"
-#include "thread-fp.h"
-#include "regexp-fields.h"
 #include "string-util.h"
 
 #include <iostream>
@@ -39,8 +35,6 @@
 
 using namespace std;
 
-#define ARRAY_SIZE(arr) (sizeof (arr) / sizeof (arr[0]))
-
 typedef struct {
     const char *name;
     const char *prefix;
@@ -52,16 +46,11 @@ typedef struct {
 #define STRINGIFY(s) _SUB_STRINGIFY (s)
 #define _SUB_STRINGIFY(s) #s
 
-#if HAVE_XAPIAN_DB_RETRY_LOCK
-#define DB_ACTION (Xapian::DB_CREATE_OR_OPEN | Xapian::DB_RETRY_LOCK)
-#else
-#define DB_ACTION Xapian::DB_CREATE_OR_OPEN
-#endif
-
 #define LOG_XAPIAN_EXCEPTION(message, error) _log_xapian_exception (__location__, message, error)
 
 static void
-_log_xapian_exception (const char *where, notmuch_database_t *notmuch,  const Xapian::Error error) {
+_log_xapian_exception (const char *where, notmuch_database_t *notmuch,  const Xapian::Error error)
+{
     _notmuch_database_log (notmuch,
 			   "A Xapian exception occurred at %s: %s\n",
 			   where,
@@ -265,233 +254,12 @@ _notmuch_database_mode (notmuch_database_t *notmuch)
  *			same thread.
  */
 
-/* With these prefix values we follow the conventions published here:
- *
- * https://xapian.org/docs/omega/termprefixes.html
- *
- * as much as makes sense. Note that I took some liberty in matching
- * the reserved prefix values to notmuch concepts, (for example, 'G'
- * is documented as "newsGroup (or similar entity - e.g. a web forum
- * name)", for which I think the thread is the closest analogue in
- * notmuch. This in spite of the fact that we will eventually be
- * storing mailing-list messages where 'G' for "mailing list name"
- * might be even a closer analogue. I'm treating the single-character
- * prefixes preferentially for core notmuch concepts (which will be
- * nearly universal to all mail messages).
- */
-
-static const
-prefix_t prefix_table[] = {
-    /* name			term prefix	flags */
-    { "type",                   "T",            NOTMUCH_FIELD_NO_FLAGS },
-    { "reference",              "XREFERENCE",   NOTMUCH_FIELD_NO_FLAGS },
-    { "replyto",                "XREPLYTO",     NOTMUCH_FIELD_NO_FLAGS },
-    { "directory",              "XDIRECTORY",   NOTMUCH_FIELD_NO_FLAGS },
-    { "file-direntry",          "XFDIRENTRY",   NOTMUCH_FIELD_NO_FLAGS },
-    { "directory-direntry",     "XDDIRENTRY",   NOTMUCH_FIELD_NO_FLAGS },
-    { "body",                   "",             NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROBABILISTIC },
-    { "thread",                 "G",            NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "tag",                    "K",            NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "is",                     "K",            NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "id",                     "Q",            NOTMUCH_FIELD_EXTERNAL },
-    { "mid",                    "Q",            NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "path",                   "P",            NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "property",               "XPROPERTY",    NOTMUCH_FIELD_EXTERNAL },
-    /*
-     * Unconditionally add ':' to reduce potential ambiguity with
-     * overlapping prefixes and/or terms that start with capital
-     * letters. See Xapian document termprefixes.html for related
-     * discussion.
-     */
-    { "folder",                 "XFOLDER:",     NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "date",                   NULL,           NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "query",                  NULL,           NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "from",                   "XFROM",        NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROBABILISTIC |
-      NOTMUCH_FIELD_PROCESSOR },
-    { "to",                     "XTO",          NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROBABILISTIC },
-    { "attachment",             "XATTACHMENT",  NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROBABILISTIC },
-    { "mimetype",               "XMIMETYPE",    NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROBABILISTIC },
-    { "subject",                "XSUBJECT",     NOTMUCH_FIELD_EXTERNAL |
-      NOTMUCH_FIELD_PROBABILISTIC |
-      NOTMUCH_FIELD_PROCESSOR },
-};
-
-static void
-_setup_query_field_default (const prefix_t *prefix, notmuch_database_t *notmuch)
-{
-    if (prefix->prefix)
-	notmuch->query_parser->add_prefix ("", prefix->prefix);
-    if (prefix->flags & NOTMUCH_FIELD_PROBABILISTIC)
-	notmuch->query_parser->add_prefix (prefix->name, prefix->prefix);
-    else
-	notmuch->query_parser->add_boolean_prefix (prefix->name, prefix->prefix);
-}
 
 notmuch_string_map_iterator_t *
 _notmuch_database_user_headers (notmuch_database_t *notmuch)
 {
     return _notmuch_string_map_iterator_create (notmuch->user_header, "", false);
 }
-
-const char *
-_user_prefix (void *ctx, const char *name)
-{
-    return talloc_asprintf (ctx, "XU%s:", name);
-}
-
-static notmuch_status_t
-_setup_user_query_fields (notmuch_database_t *notmuch)
-{
-    notmuch_config_list_t *list;
-    notmuch_status_t status;
-
-    notmuch->user_prefix = _notmuch_string_map_create (notmuch);
-    if (notmuch->user_prefix == NULL)
-	return NOTMUCH_STATUS_OUT_OF_MEMORY;
-
-    notmuch->user_header = _notmuch_string_map_create (notmuch);
-    if (notmuch->user_header == NULL)
-	return NOTMUCH_STATUS_OUT_OF_MEMORY;
-
-    status = notmuch_database_get_config_list (notmuch, CONFIG_HEADER_PREFIX, &list);
-    if (status)
-	return status;
-
-    for (; notmuch_config_list_valid (list); notmuch_config_list_move_to_next (list)) {
-
-	prefix_t query_field;
-
-	const char *key = notmuch_config_list_key (list)
-			  + sizeof (CONFIG_HEADER_PREFIX) - 1;
-
-	_notmuch_string_map_append (notmuch->user_prefix,
-				    key,
-				    _user_prefix (notmuch, key));
-
-	_notmuch_string_map_append (notmuch->user_header,
-				    key,
-				    notmuch_config_list_value (list));
-
-	query_field.name = talloc_strdup (notmuch, key);
-	query_field.prefix = _user_prefix (notmuch, key);
-	query_field.flags = NOTMUCH_FIELD_PROBABILISTIC
-			    | NOTMUCH_FIELD_EXTERNAL;
-
-	_setup_query_field_default (&query_field, notmuch);
-    }
-
-    notmuch_config_list_destroy (list);
-
-    return NOTMUCH_STATUS_SUCCESS;
-}
-
-static void
-_setup_query_field (const prefix_t *prefix, notmuch_database_t *notmuch)
-{
-    if (prefix->flags & NOTMUCH_FIELD_PROCESSOR) {
-	Xapian::FieldProcessor *fp;
-
-	if (STRNCMP_LITERAL (prefix->name, "date") == 0)
-	    fp = (new DateFieldProcessor(NOTMUCH_VALUE_TIMESTAMP))->release ();
-	else if (STRNCMP_LITERAL(prefix->name, "query") == 0)
-	    fp = (new QueryFieldProcessor (*notmuch->query_parser, notmuch))->release ();
-	else if (STRNCMP_LITERAL (prefix->name, "thread") == 0)
-	    fp = (new ThreadFieldProcessor (*notmuch->query_parser, notmuch))->release ();
-	else
-	    fp = (new RegexpFieldProcessor (prefix->name, prefix->flags,
-					    *notmuch->query_parser, notmuch))->release ();
-
-	/* we treat all field-processor fields as boolean in order to get the raw input */
-	if (prefix->prefix)
-	    notmuch->query_parser->add_prefix ("", prefix->prefix);
-	notmuch->query_parser->add_boolean_prefix (prefix->name, fp);
-    } else {
-	_setup_query_field_default (prefix, notmuch);
-    }
-}
-
-const char *
-_find_prefix (const char *name)
-{
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE (prefix_table); i++) {
-	if (strcmp (name, prefix_table[i].name) == 0)
-	    return prefix_table[i].prefix;
-    }
-
-    INTERNAL_ERROR ("No prefix exists for '%s'\n", name);
-
-    return "";
-}
-
-/* Like find prefix, but include the possibility of user defined
- * prefixes specific to this database */
-
-const char *
-_notmuch_database_prefix (notmuch_database_t *notmuch, const char *name)
-{
-    unsigned int i;
-
-    /*XXX TODO: reduce code duplication */
-    for (i = 0; i < ARRAY_SIZE (prefix_table); i++) {
-	if (strcmp (name, prefix_table[i].name) == 0)
-	    return prefix_table[i].prefix;
-    }
-
-    if (notmuch->user_prefix)
-	return _notmuch_string_map_get (notmuch->user_prefix, name);
-
-    return NULL;
-}
-
-static const struct {
-    /* NOTMUCH_FEATURE_* value. */
-    _notmuch_features value;
-    /* Feature name as it appears in the database.  This name should
-     * be appropriate for displaying to the user if an older version
-     * of notmuch doesn't support this feature. */
-    const char *name;
-    /* Compatibility flags when this feature is declared. */
-    const char *flags;
-} feature_names[] = {
-    { NOTMUCH_FEATURE_FILE_TERMS,
-      "multiple paths per message", "rw" },
-    { NOTMUCH_FEATURE_DIRECTORY_DOCS,
-      "relative directory paths", "rw" },
-    /* Header values are not required for reading a database because a
-     * reader can just refer to the message file. */
-    { NOTMUCH_FEATURE_FROM_SUBJECT_ID_VALUES,
-      "from/subject/message-ID in database", "w" },
-    { NOTMUCH_FEATURE_BOOL_FOLDER,
-      "exact folder:/path: search", "rw" },
-    { NOTMUCH_FEATURE_GHOSTS,
-      "mail documents for missing messages", "w" },
-    /* Knowledge of the index mime-types are not required for reading
-     * a database because a reader will just be unable to query
-     * them. */
-    { NOTMUCH_FEATURE_INDEXED_MIMETYPES,
-      "indexed MIME types", "w" },
-    { NOTMUCH_FEATURE_LAST_MOD,
-      "modification tracking", "w" },
-    /* Existing databases will work fine for all queries not involving
-     * 'body:' */
-    { NOTMUCH_FEATURE_UNPREFIX_BODY_ONLY,
-      "index body and headers separately", "w" },
-};
 
 const char *
 notmuch_status_to_string (notmuch_status_t status)
@@ -525,12 +293,22 @@ notmuch_status_to_string (notmuch_status_t status)
 	return "Operation requires a database upgrade";
     case NOTMUCH_STATUS_PATH_ERROR:
 	return "Path supplied is illegal for this function";
+    case NOTMUCH_STATUS_IGNORED:
+	return "Argument was ignored";
+    case NOTMUCH_STATUS_ILLEGAL_ARGUMENT:
+	return "Illegal argument for function";
     case NOTMUCH_STATUS_MALFORMED_CRYPTO_PROTOCOL:
 	return "Crypto protocol missing, malformed, or unintelligible";
     case NOTMUCH_STATUS_FAILED_CRYPTO_CONTEXT_CREATION:
 	return "Crypto engine initialization failure";
     case NOTMUCH_STATUS_UNKNOWN_CRYPTO_PROTOCOL:
 	return "Unknown crypto protocol";
+    case NOTMUCH_STATUS_NO_CONFIG:
+	return "No configuration file found";
+    case NOTMUCH_STATUS_NO_DATABASE:
+	return "No database found";
+    case NOTMUCH_STATUS_DATABASE_EXISTS:
+	return "Database exists, not recreated";
     default:
     case NOTMUCH_STATUS_LAST_STATUS:
 	return "Unknown error status value";
@@ -687,109 +465,6 @@ notmuch_database_find_message (notmuch_database_t *notmuch,
 }
 
 notmuch_status_t
-notmuch_database_create (const char *path, notmuch_database_t **database)
-{
-    char *status_string = NULL;
-    notmuch_status_t status;
-
-    status = notmuch_database_create_verbose (path, database,
-					      &status_string);
-
-    if (status_string) {
-	fputs (status_string, stderr);
-	free (status_string);
-    }
-
-    return status;
-}
-
-notmuch_status_t
-notmuch_database_create_verbose (const char *path,
-				 notmuch_database_t **database,
-				 char **status_string)
-{
-    notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
-    notmuch_database_t *notmuch = NULL;
-    char *notmuch_path = NULL;
-    char *message = NULL;
-    struct stat st;
-    int err;
-
-    if (path == NULL) {
-	message = strdup ("Error: Cannot create a database for a NULL path.\n");
-	status = NOTMUCH_STATUS_NULL_POINTER;
-	goto DONE;
-    }
-
-    if (path[0] != '/') {
-	message = strdup ("Error: Database path must be absolute.\n");
-	status = NOTMUCH_STATUS_PATH_ERROR;
-	goto DONE;
-    }
-
-    err = stat (path, &st);
-    if (err) {
-	IGNORE_RESULT (asprintf (&message, "Error: Cannot create database at %s: %s.\n",
-				 path, strerror (errno)));
-	status = NOTMUCH_STATUS_FILE_ERROR;
-	goto DONE;
-    }
-
-    if (! S_ISDIR (st.st_mode)) {
-	IGNORE_RESULT (asprintf (&message, "Error: Cannot create database at %s: "
-				 "Not a directory.\n",
-				 path));
-	status = NOTMUCH_STATUS_FILE_ERROR;
-	goto DONE;
-    }
-
-    notmuch_path = talloc_asprintf (NULL, "%s/%s", path, ".notmuch");
-
-    err = mkdir (notmuch_path, 0755);
-
-    if (err) {
-	IGNORE_RESULT (asprintf (&message, "Error: Cannot create directory %s: %s.\n",
-				 notmuch_path, strerror (errno)));
-	status = NOTMUCH_STATUS_FILE_ERROR;
-	goto DONE;
-    }
-
-    status = notmuch_database_open_verbose (path,
-					    NOTMUCH_DATABASE_MODE_READ_WRITE,
-					    &notmuch, &message);
-    if (status)
-	goto DONE;
-
-    /* Upgrade doesn't add these feature to existing databases, but
-     * new databases have them. */
-    notmuch->features |= NOTMUCH_FEATURE_FROM_SUBJECT_ID_VALUES;
-    notmuch->features |= NOTMUCH_FEATURE_INDEXED_MIMETYPES;
-    notmuch->features |= NOTMUCH_FEATURE_UNPREFIX_BODY_ONLY;
-
-    status = notmuch_database_upgrade (notmuch, NULL, NULL);
-    if (status) {
-	notmuch_database_close (notmuch);
-	notmuch = NULL;
-    }
-
-  DONE:
-    if (notmuch_path)
-	talloc_free (notmuch_path);
-
-    if (message) {
-	if (status_string)
-	    *status_string = message;
-	else
-	    free (message);
-    }
-    if (database)
-	*database = notmuch;
-    else
-	talloc_free (notmuch);
-    return status;
-}
-
-notmuch_status_t
 _notmuch_database_ensure_writable (notmuch_database_t *notmuch)
 {
     if (_notmuch_database_mode (notmuch) == NOTMUCH_DATABASE_MODE_READ_ONLY) {
@@ -817,291 +492,6 @@ _notmuch_database_new_revision (notmuch_database_t *notmuch)
     return new_revision;
 }
 
-/* Parse a database features string from the given database version.
- * Returns the feature bit set.
- *
- * For version < 3, this ignores the features string and returns a
- * hard-coded set of features.
- *
- * If there are unrecognized features that are required to open the
- * database in mode (which should be 'r' or 'w'), return a
- * comma-separated list of unrecognized but required features in
- * *incompat_out suitable for presenting to the user.  *incompat_out
- * will be allocated from ctx.
- */
-static _notmuch_features
-_parse_features (const void *ctx, const char *features, unsigned int version,
-		 char mode, char **incompat_out)
-{
-    _notmuch_features res = static_cast<_notmuch_features>(0);
-    unsigned int namelen, i;
-    size_t llen = 0;
-    const char *flags;
-
-    /* Prior to database version 3, features were implied by the
-     * version number. */
-    if (version == 0)
-	return NOTMUCH_FEATURES_V0;
-    else if (version == 1)
-	return NOTMUCH_FEATURES_V1;
-    else if (version == 2)
-	return NOTMUCH_FEATURES_V2;
-
-    /* Parse the features string */
-    while ((features = strtok_len_c (features + llen, "\n", &llen)) != NULL) {
-	flags = strchr (features, '\t');
-	if (! flags || flags > features + llen)
-	    continue;
-	namelen = flags - features;
-
-	for (i = 0; i < ARRAY_SIZE (feature_names); ++i) {
-	    if (strlen (feature_names[i].name) == namelen &&
-		strncmp (feature_names[i].name, features, namelen) == 0) {
-		res |= feature_names[i].value;
-		break;
-	    }
-	}
-
-	if (i == ARRAY_SIZE (feature_names) && incompat_out) {
-	    /* Unrecognized feature */
-	    const char *have = strchr (flags, mode);
-	    if (have && have < features + llen) {
-		/* This feature is required to access this database in
-		 * 'mode', but we don't understand it. */
-		if (! *incompat_out)
-		    *incompat_out = talloc_strdup (ctx, "");
-		*incompat_out = talloc_asprintf_append_buffer (
-		    *incompat_out, "%s%.*s", **incompat_out ? ", " : "",
-		    namelen, features);
-	    }
-	}
-    }
-
-    return res;
-}
-
-static char *
-_print_features (const void *ctx, unsigned int features)
-{
-    unsigned int i;
-    char *res = talloc_strdup (ctx, "");
-
-    for (i = 0; i < ARRAY_SIZE (feature_names); ++i)
-	if (features & feature_names[i].value)
-	    res = talloc_asprintf_append_buffer (
-		res, "%s\t%s\n", feature_names[i].name, feature_names[i].flags);
-
-    return res;
-}
-
-notmuch_status_t
-notmuch_database_open (const char *path,
-		       notmuch_database_mode_t mode,
-		       notmuch_database_t **database)
-{
-    char *status_string = NULL;
-    notmuch_status_t status;
-
-    status = notmuch_database_open_verbose (path, mode, database,
-					    &status_string);
-
-    if (status_string) {
-	fputs (status_string, stderr);
-	free (status_string);
-    }
-
-    return status;
-}
-
-notmuch_status_t
-notmuch_database_open_verbose (const char *path,
-			       notmuch_database_mode_t mode,
-			       notmuch_database_t **database,
-			       char **status_string)
-{
-    notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
-    void *local = talloc_new (NULL);
-    notmuch_database_t *notmuch = NULL;
-    char *notmuch_path, *xapian_path, *incompat_features;
-    char *message = NULL;
-    struct stat st;
-    int err;
-    unsigned int i, version;
-    static int initialized = 0;
-
-    if (path == NULL) {
-	message = strdup ("Error: Cannot open a database for a NULL path.\n");
-	status = NOTMUCH_STATUS_NULL_POINTER;
-	goto DONE;
-    }
-
-    if (path[0] != '/') {
-	message = strdup ("Error: Database path must be absolute.\n");
-	status = NOTMUCH_STATUS_PATH_ERROR;
-	goto DONE;
-    }
-
-    if (! (notmuch_path = talloc_asprintf (local, "%s/%s", path, ".notmuch"))) {
-	message = strdup ("Out of memory\n");
-	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
-	goto DONE;
-    }
-
-    err = stat (notmuch_path, &st);
-    if (err) {
-	IGNORE_RESULT (asprintf (&message, "Error opening database at %s: %s\n",
-				 notmuch_path, strerror (errno)));
-	status = NOTMUCH_STATUS_FILE_ERROR;
-	goto DONE;
-    }
-
-    if (! (xapian_path = talloc_asprintf (local, "%s/%s", notmuch_path, "xapian"))) {
-	message = strdup ("Out of memory\n");
-	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
-	goto DONE;
-    }
-
-    /* Initialize the GLib type system and threads */
-#if ! GLIB_CHECK_VERSION (2, 35, 1)
-    g_type_init ();
-#endif
-
-    /* Initialize gmime */
-    if (! initialized) {
-	g_mime_init ();
-	initialized = 1;
-    }
-
-    notmuch = talloc_zero (NULL, notmuch_database_t);
-    notmuch->exception_reported = false;
-    notmuch->status_string = NULL;
-    notmuch->path = talloc_strdup (notmuch, path);
-
-    strip_trailing (notmuch->path, '/');
-
-    notmuch->writable_xapian_db = NULL;
-    notmuch->atomic_nesting = 0;
-    notmuch->view = 1;
-    try {
-	string last_thread_id;
-	string last_mod;
-
-	if (mode == NOTMUCH_DATABASE_MODE_READ_WRITE) {
-	    notmuch->writable_xapian_db = new Xapian::WritableDatabase (xapian_path,
-									DB_ACTION);
-	    notmuch->xapian_db = notmuch->writable_xapian_db;
-	} else {
-	    notmuch->xapian_db = new Xapian::Database (xapian_path);
-	}
-
-	/* Check version.  As of database version 3, we represent
-	 * changes in terms of features, so assume a version bump
-	 * means a dramatically incompatible change. */
-	version = notmuch_database_get_version (notmuch);
-	if (version > NOTMUCH_DATABASE_VERSION) {
-	    IGNORE_RESULT (asprintf (&message,
-				     "Error: Notmuch database at %s\n"
-				     "       has a newer database format version (%u) than supported by this\n"
-				     "       version of notmuch (%u).\n",
-				     notmuch_path, version, NOTMUCH_DATABASE_VERSION));
-	    notmuch_database_destroy (notmuch);
-	    notmuch = NULL;
-	    status = NOTMUCH_STATUS_FILE_ERROR;
-	    goto DONE;
-	}
-
-	/* Check features. */
-	incompat_features = NULL;
-	notmuch->features = _parse_features (
-	    local, notmuch->xapian_db->get_metadata ("features").c_str (),
-	    version, mode == NOTMUCH_DATABASE_MODE_READ_WRITE ? 'w' : 'r',
-	    &incompat_features);
-	if (incompat_features) {
-	    IGNORE_RESULT (asprintf (&message,
-				     "Error: Notmuch database at %s\n"
-				     "       requires features (%s)\n"
-				     "       not supported by this version of notmuch.\n",
-				     notmuch_path, incompat_features));
-	    notmuch_database_destroy (notmuch);
-	    notmuch = NULL;
-	    status = NOTMUCH_STATUS_FILE_ERROR;
-	    goto DONE;
-	}
-
-	notmuch->last_doc_id = notmuch->xapian_db->get_lastdocid ();
-	last_thread_id = notmuch->xapian_db->get_metadata ("last_thread_id");
-	if (last_thread_id.empty ()) {
-	    notmuch->last_thread_id = 0;
-	} else {
-	    const char *str;
-	    char *end;
-
-	    str = last_thread_id.c_str ();
-	    notmuch->last_thread_id = strtoull (str, &end, 16);
-	    if (*end != '\0')
-		INTERNAL_ERROR ("Malformed database last_thread_id: %s", str);
-	}
-
-	/* Get current highest revision number. */
-	last_mod = notmuch->xapian_db->get_value_upper_bound (
-	    NOTMUCH_VALUE_LAST_MOD);
-	if (last_mod.empty ())
-	    notmuch->revision = 0;
-	else
-	    notmuch->revision = Xapian::sortable_unserialise (last_mod);
-	notmuch->uuid = talloc_strdup (
-	    notmuch, notmuch->xapian_db->get_uuid ().c_str ());
-
-	notmuch->query_parser = new Xapian::QueryParser;
-	notmuch->term_gen = new Xapian::TermGenerator;
-	notmuch->term_gen->set_stemmer (Xapian::Stem ("english"));
-	notmuch->value_range_processor = new Xapian::NumberRangeProcessor (NOTMUCH_VALUE_TIMESTAMP);
-	notmuch->date_range_processor = new ParseTimeRangeProcessor (NOTMUCH_VALUE_TIMESTAMP, "date:");
-	notmuch->last_mod_range_processor = new Xapian::NumberRangeProcessor (NOTMUCH_VALUE_LAST_MOD, "lastmod:");
-	notmuch->query_parser->set_default_op (Xapian::Query::OP_AND);
-	notmuch->query_parser->set_database (*notmuch->xapian_db);
-	notmuch->query_parser->set_stemmer (Xapian::Stem ("english"));
-	notmuch->query_parser->set_stemming_strategy (Xapian::QueryParser::STEM_SOME);
-	notmuch->query_parser->add_rangeprocessor (notmuch->value_range_processor);
-	notmuch->query_parser->add_rangeprocessor (notmuch->date_range_processor);
-	notmuch->query_parser->add_rangeprocessor (notmuch->last_mod_range_processor);
-
-	for (i = 0; i < ARRAY_SIZE (prefix_table); i++) {
-	    const prefix_t *prefix = &prefix_table[i];
-	    if (prefix->flags & NOTMUCH_FIELD_EXTERNAL) {
-		_setup_query_field (prefix, notmuch);
-	    }
-	}
-	status = _setup_user_query_fields (notmuch);
-    } catch (const Xapian::Error &error) {
-	IGNORE_RESULT (asprintf (&message, "A Xapian exception occurred opening database: %s\n",
-				 error.get_msg ().c_str ()));
-	notmuch_database_destroy (notmuch);
-	notmuch = NULL;
-	status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
-    }
-
-  DONE:
-    talloc_free (local);
-
-    if (message) {
-	if (status_string)
-	    *status_string = message;
-	else
-	    free (message);
-    }
-
-    if (database)
-	*database = notmuch;
-    else
-	talloc_free (notmuch);
-
-    if (notmuch)
-	notmuch->open = true;
-
-    return status;
-}
-
 notmuch_status_t
 notmuch_database_close (notmuch_database_t *notmuch)
 {
@@ -1127,35 +517,14 @@ notmuch_database_close (notmuch_database_t *notmuch)
 	} catch (const Xapian::Error &error) {
 	    status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
 	    if (! notmuch->exception_reported) {
-		_notmuch_database_log (notmuch, "Error: A Xapian exception occurred closing database: %s\n",
+		_notmuch_database_log (notmuch,
+				       "Error: A Xapian exception occurred closing database: %s\n",
 				       error.get_msg ().c_str ());
 	    }
 	}
     }
     notmuch->open = false;
     return status;
-}
-
-notmuch_status_t
-_notmuch_database_reopen (notmuch_database_t *notmuch)
-{
-    if (_notmuch_database_mode (notmuch) != NOTMUCH_DATABASE_MODE_READ_ONLY)
-	return NOTMUCH_STATUS_UNSUPPORTED_OPERATION;
-
-    try {
-	notmuch->xapian_db->reopen ();
-    } catch (const Xapian::Error &error) {
-	if (! notmuch->exception_reported) {
-	    _notmuch_database_log (notmuch, "Error: A Xapian exception reopening database: %s\n",
-				   error.get_msg ().c_str ());
-	    notmuch->exception_reported = true;
-	}
-	return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
-    }
-
-    notmuch->view++;
-
-    return NOTMUCH_STATUS_SUCCESS;
 }
 
 static int
@@ -1223,17 +592,9 @@ notmuch_database_compact (const char *path,
 			  notmuch_compact_status_cb_t status_cb,
 			  void *closure)
 {
-    void *local;
-    char *notmuch_path, *xapian_path, *compact_xapian_path;
     notmuch_status_t ret = NOTMUCH_STATUS_SUCCESS;
     notmuch_database_t *notmuch = NULL;
-    struct stat statbuf;
-    bool keep_backup;
     char *message = NULL;
-
-    local = talloc_new (NULL);
-    if (! local)
-	return NOTMUCH_STATUS_OUT_OF_MEMORY;
 
     ret = notmuch_database_open_verbose (path,
 					 NOTMUCH_DATABASE_MODE_READ_WRITE,
@@ -1241,18 +602,46 @@ notmuch_database_compact (const char *path,
 					 &message);
     if (ret) {
 	if (status_cb) status_cb (message, closure);
-	goto DONE;
+	return ret;
     }
 
-    if (! (notmuch_path = talloc_asprintf (local, "%s/%s", path, ".notmuch"))) {
-	ret = NOTMUCH_STATUS_OUT_OF_MEMORY;
-	goto DONE;
-    }
+    _notmuch_config_cache (notmuch, NOTMUCH_CONFIG_DATABASE_PATH, path);
 
-    if (! (xapian_path = talloc_asprintf (local, "%s/%s", notmuch_path, "xapian"))) {
-	ret = NOTMUCH_STATUS_OUT_OF_MEMORY;
+    return notmuch_database_compact_db (notmuch,
+					backup_path,
+					status_cb,
+					closure);
+}
+
+notmuch_status_t
+notmuch_database_compact_db (notmuch_database_t *notmuch,
+			     const char *backup_path,
+			     notmuch_compact_status_cb_t status_cb,
+			     void *closure)
+{
+    void *local;
+    const char *xapian_path, *compact_xapian_path;
+    const char *path;
+    notmuch_status_t ret = NOTMUCH_STATUS_SUCCESS;
+    struct stat statbuf;
+    bool keep_backup;
+    char *message;
+
+    ret = _notmuch_database_ensure_writable (notmuch);
+    if (ret)
+	return ret;
+
+    path = notmuch_config_get (notmuch, NOTMUCH_CONFIG_DATABASE_PATH);
+    if (! path)
+	return NOTMUCH_STATUS_PATH_ERROR;
+
+    local = talloc_new (NULL);
+    if (! local)
+	return NOTMUCH_STATUS_OUT_OF_MEMORY;
+
+    ret = _notmuch_choose_xapian_path (local, path, &xapian_path, &message);
+    if (ret)
 	goto DONE;
-    }
 
     if (! (compact_xapian_path = talloc_asprintf (local, "%s.compact", xapian_path))) {
 	ret = NOTMUCH_STATUS_OUT_OF_MEMORY;
@@ -1289,7 +678,8 @@ notmuch_database_compact (const char *path,
 
     try {
 	NotmuchCompactor compactor (status_cb, closure);
-	notmuch->xapian_db->compact (compact_xapian_path, Xapian::DBCOMPACT_NO_RENUMBER, 0, compactor);
+	notmuch->xapian_db->compact (compact_xapian_path, Xapian::DBCOMPACT_NO_RENUMBER, 0,
+				     compactor);
     } catch (const Xapian::Error &error) {
 	_notmuch_database_log (notmuch, "Error while compacting: %s\n", error.get_msg ().c_str ());
 	ret = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
@@ -1367,7 +757,7 @@ notmuch_database_destroy (notmuch_database_t *notmuch)
 const char *
 notmuch_database_get_path (notmuch_database_t *notmuch)
 {
-    return notmuch->path;
+    return notmuch_config_get (notmuch, NOTMUCH_CONFIG_DATABASE_PATH);
 }
 
 unsigned int
@@ -1437,8 +827,8 @@ handle_sigalrm (unused (int signal))
  */
 notmuch_status_t
 notmuch_database_upgrade (notmuch_database_t *notmuch,
-			  void (*progress_notify) (void *closure,
-						   double progress),
+			  void (*progress_notify)(void *closure,
+						  double progress),
 			  void *closure)
 {
     void *local = talloc_new (NULL);
@@ -1662,7 +1052,8 @@ notmuch_database_upgrade (notmuch_database_t *notmuch,
 	    if (private_status) {
 		_notmuch_database_log (notmuch,
 				       "Upgrade failed while creating ghost messages.\n");
-		status = COERCE_STATUS (private_status, "Unexpected status from _notmuch_message_initialize_ghost");
+		status = COERCE_STATUS (private_status,
+					"Unexpected status from _notmuch_message_initialize_ghost");
 		goto DONE;
 	    }
 
@@ -1674,7 +1065,7 @@ notmuch_database_upgrade (notmuch_database_t *notmuch,
     }
 
     status = NOTMUCH_STATUS_SUCCESS;
-    db->set_metadata ("features", _print_features (local, notmuch->features));
+    db->set_metadata ("features", _notmuch_database_print_features (local, notmuch->features));
     db->set_metadata ("version", STRINGIFY (NOTMUCH_DATABASE_VERSION));
 
   DONE:
@@ -1964,7 +1355,7 @@ _notmuch_database_relative_path (notmuch_database_t *notmuch,
     const char *db_path, *relative;
     unsigned int db_path_len;
 
-    db_path = notmuch_database_get_path (notmuch);
+    db_path = notmuch_config_get (notmuch, NOTMUCH_CONFIG_MAIL_ROOT);
     db_path_len = strlen (db_path);
 
     relative = path;
@@ -2095,7 +1486,8 @@ notmuch_database_find_message_by_filename (notmuch_database_t *notmuch,
 		status = NOTMUCH_STATUS_OUT_OF_MEMORY;
 	}
     } catch (const Xapian::Error &error) {
-	_notmuch_database_log (notmuch, "Error: A Xapian exception occurred finding message by filename: %s\n",
+	_notmuch_database_log (notmuch,
+			       "Error: A Xapian exception occurred finding message by filename: %s\n",
 			       error.get_msg ().c_str ());
 	notmuch->exception_reported = true;
 	status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;

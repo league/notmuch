@@ -156,7 +156,7 @@ chomp_newline (char *str)
  */
 extern int notmuch_format_version;
 
-typedef struct _notmuch_config notmuch_config_t;
+typedef struct _notmuch_conffile notmuch_conffile_t;
 
 /* Commands that support structured output should support the
  * following argument
@@ -171,46 +171,46 @@ void
 notmuch_exit_if_unsupported_format (void);
 
 int
-notmuch_count_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_count_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_dump_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_dump_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_new_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_new_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_insert_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_reindex_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_reindex_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_reply_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_reply_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_restore_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_restore_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_search_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_search_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_address_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_address_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_setup_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_setup_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_show_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_show_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_tag_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_tag_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_config_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_config_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 int
-notmuch_compact_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_compact_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 const char *
 notmuch_time_relative_date (const void *ctx, time_t then);
@@ -253,88 +253,64 @@ json_quote_str (const void *ctx, const char *str);
 /* notmuch-config.c */
 
 typedef enum {
-    NOTMUCH_CONFIG_OPEN		= 1 << 0,
-    NOTMUCH_CONFIG_CREATE	= 1 << 1,
-} notmuch_config_mode_t;
+    NOTMUCH_COMMAND_CONFIG_CREATE	= 1 << 1,
+    NOTMUCH_COMMAND_DATABASE_EARLY	= 1 << 2,
+    NOTMUCH_COMMAND_DATABASE_WRITE	= 1 << 3,
+    NOTMUCH_COMMAND_DATABASE_CREATE	= 1 << 4,
+    NOTMUCH_COMMAND_CONFIG_LOAD		= 1 << 5,
+} notmuch_command_mode_t;
 
-notmuch_config_t *
-notmuch_config_open (void *ctx,
-		     const char *filename,
-		     notmuch_config_mode_t config_mode);
+notmuch_conffile_t *
+notmuch_conffile_open (notmuch_database_t *notmuch,
+		       const char *filename,
+		       bool create);
 
 void
-notmuch_config_close (notmuch_config_t *config);
+notmuch_conffile_close (notmuch_conffile_t *config);
 
 int
-notmuch_config_save (notmuch_config_t *config);
+notmuch_conffile_save (notmuch_conffile_t *config);
 
 bool
-notmuch_config_is_new (notmuch_config_t *config);
-
-const char *
-notmuch_config_get_database_path (notmuch_config_t *config);
+notmuch_conffile_is_new (notmuch_conffile_t *config);
 
 void
-notmuch_config_set_database_path (notmuch_config_t *config,
-				  const char *database_path);
-
-const char *
-notmuch_config_get_user_name (notmuch_config_t *config);
+notmuch_conffile_set_database_path (notmuch_conffile_t *config,
+				    const char *database_path);
 
 void
-notmuch_config_set_user_name (notmuch_config_t *config,
-			      const char *user_name);
-
-const char *
-notmuch_config_get_user_primary_email (notmuch_config_t *config);
+notmuch_conffile_set_user_name (notmuch_conffile_t *config,
+				const char *user_name);
 
 void
-notmuch_config_set_user_primary_email (notmuch_config_t *config,
-				       const char *primary_email);
-
-const char **
-notmuch_config_get_user_other_email (notmuch_config_t *config,
-				     size_t *length);
+notmuch_conffile_set_user_primary_email (notmuch_conffile_t *config,
+					 const char *primary_email);
 
 void
-notmuch_config_set_user_other_email (notmuch_config_t *config,
-				     const char *other_email[],
-				     size_t length);
-
-const char **
-notmuch_config_get_new_tags (notmuch_config_t *config,
-			     size_t *length);
-void
-notmuch_config_set_new_tags (notmuch_config_t *config,
-			     const char *new_tags[],
-			     size_t length);
-
-const char **
-notmuch_config_get_new_ignore (notmuch_config_t *config,
-			       size_t *length);
+notmuch_conffile_set_user_other_email (notmuch_conffile_t *config,
+				       const char *other_email[],
+				       size_t length);
 
 void
-notmuch_config_set_new_ignore (notmuch_config_t *config,
-			       const char *new_ignore[],
+notmuch_conffile_set_new_tags (notmuch_conffile_t *config,
+			       const char *new_tags[],
 			       size_t length);
 
-bool
-notmuch_config_get_maildir_synchronize_flags (notmuch_config_t *config);
+void
+notmuch_conffile_set_new_ignore (notmuch_conffile_t *config,
+				 const char *new_ignore[],
+				 size_t length);
 
 void
-notmuch_config_set_maildir_synchronize_flags (notmuch_config_t *config,
-					      bool synchronize_flags);
-
-const char **
-notmuch_config_get_search_exclude_tags (notmuch_config_t *config, size_t *length);
+notmuch_conffile_set_maildir_synchronize_flags (notmuch_conffile_t *config,
+						bool synchronize_flags);
 
 void
-notmuch_config_set_search_exclude_tags (notmuch_config_t *config,
-					const char *list[],
-					size_t length);
-
+notmuch_conffile_set_search_exclude_tags (notmuch_conffile_t *config,
+					  const char *list[],
+					  size_t length);
 int
-notmuch_run_hook (const char *db_path, const char *hook);
+notmuch_run_hook (notmuch_database_t *notmuch, const char *hook);
 
 bool
 debugger_is_active (void);
@@ -498,9 +474,10 @@ print_status_gzbytes (const char *loc,
 		      int bytes);
 
 /* the __location__ macro is defined in talloc.h */
-#define ASSERT_GZBYTES(file, bytes) ((print_status_gzbytes (__location__, file, bytes)) ? exit (1) : 0)
+#define ASSERT_GZBYTES(file, bytes) ((print_status_gzbytes (__location__, file, bytes)) ? exit (1) : \
+				     0)
 #define GZPRINTF(file, fmt, ...) ASSERT_GZBYTES (file, gzprintf (file, fmt, ##__VA_ARGS__));
-#define GZPUTS(file, str) ASSERT_GZBYTES(file, gzputs (file, str));
+#define GZPUTS(file, str) ASSERT_GZBYTES (file, gzputs (file, str));
 
 #include "command-line-arguments.h"
 

@@ -104,11 +104,15 @@ unset CDPATH
 
 unset GREP_OPTIONS
 
+# For lib/open.cc:_load_key_file
 unset XDG_CONFIG_HOME
 unset XDG_DATA_HOME
 
 # For emacsclient
 unset ALTERNATE_EDITOR
+
+# for reproducibility
+unset EMAIL
 
 add_gnupg_home ()
 {
@@ -697,6 +701,22 @@ notmuch_built_with_sanitize ()
     sed 's/^built_with[.]\(.*\)=.*$/built_with.\1=something/'
 }
 
+notmuch_passwd_sanitize()
+{
+    ${NOTMUCH_PYTHON} -c'
+import os, sys, pwd, socket
+
+pw = pwd.getpwuid(os.getuid())
+user = pw.pw_name
+name = pw.pw_gecos.partition(",")[0]
+fqdn = socket.getfqdn()
+
+for l in sys.stdin:
+    l = l.replace(user, "USERNAME").replace(fqdn, "FQDN").replace(".(none)","").replace(name, "USER_FULL_NAME")
+    sys.stdout.write(l)
+'
+}
+
 notmuch_config_sanitize ()
 {
     notmuch_dir_sanitize | notmuch_built_with_sanitize
@@ -1120,7 +1140,7 @@ notmuch_with_shim () {
     base_name="$1"
     shift
     shim_file="${base_name}.so"
-    LD_PRELOAD=./${shim_file}${LD_PRELOAD:+:$LD_PRELOAD} notmuch-shared "$@"
+    LD_PRELOAD=${LD_PRELOAD:+:$LD_PRELOAD}:./${shim_file} notmuch-shared "$@"
 }
 
 # Creates a script that counts how much time it is executed and calls
@@ -1273,3 +1293,5 @@ test_declare_external_prereq gpg
 test_declare_external_prereq openssl
 test_declare_external_prereq gpgsm
 test_declare_external_prereq ${NOTMUCH_PYTHON}
+test_declare_external_prereq xapian-metadata
+test_declare_external_prereq xapian-delve

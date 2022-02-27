@@ -444,14 +444,12 @@ add_file (notmuch_database_t *notmuch, const char *path, tag_op_list_t *tag_ops,
 }
 
 int
-notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
+notmuch_insert_command (notmuch_database_t *notmuch, int argc, char *argv[])
 {
     notmuch_status_t status, close_status;
-    notmuch_database_t *notmuch;
     struct sigaction action;
-    const char *db_path;
-    const char **new_tags;
-    size_t new_tags_length;
+    const char *mail_root;
+    notmuch_config_values_t *new_tags = NULL;
     tag_op_list_t *tag_ops;
     char *query_string = NULL;
     const char *folder = "";
@@ -459,11 +457,11 @@ notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
     bool keep = false;
     bool hooks = true;
     bool world_readable = false;
-    bool synchronize_flags;
+    notmuch_bool_t synchronize_flags;
     char *maildir;
     char *newpath;
     int opt_index;
-    unsigned int i;
+    void *local = talloc_new (NULL);
 
     notmuch_opt_desc_t options[] = {
 	{ .opt_string = &folder, .name = "folder", .allow_empty = true },
@@ -482,30 +480,39 @@ notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
 
     notmuch_process_shared_options (argv[0]);
 
-    db_path = notmuch_config_get_database_path (config);
-    new_tags = notmuch_config_get_new_tags (config, &new_tags_length);
-    synchronize_flags = notmuch_config_get_maildir_synchronize_flags (config);
+    mail_root = notmuch_config_get (notmuch, NOTMUCH_CONFIG_MAIL_ROOT);
 
-    tag_ops = tag_op_list_create (config);
+    new_tags = notmuch_config_get_values (notmuch, NOTMUCH_CONFIG_NEW_TAGS);
+
+    if (print_status_database (
+	    "notmuch insert",
+	    notmuch,
+	    notmuch_config_get_bool (notmuch, NOTMUCH_CONFIG_SYNC_MAILDIR_FLAGS,
+				     &synchronize_flags)))
+	return EXIT_FAILURE;
+
+    tag_ops = tag_op_list_create (local);
     if (tag_ops == NULL) {
 	fprintf (stderr, "Out of memory.\n");
 	return EXIT_FAILURE;
     }
-    for (i = 0; i < new_tags_length; i++) {
+    for (;
+	 notmuch_config_values_valid (new_tags);
+	 notmuch_config_values_move_to_next (new_tags)) {
 	const char *error_msg;
-
-	error_msg = illegal_tag (new_tags[i], false);
+	const char *tag = notmuch_config_values_get (new_tags);
+	error_msg = illegal_tag (tag, false);
 	if (error_msg) {
 	    fprintf (stderr, "Error: tag '%s' in new.tags: %s\n",
-		     new_tags[i],  error_msg);
+		     tag,  error_msg);
 	    return EXIT_FAILURE;
 	}
 
-	if (tag_op_list_append (tag_ops, new_tags[i], false))
+	if (tag_op_list_append (tag_ops, tag, false))
 	    return EXIT_FAILURE;
     }
 
-    if (parse_tag_command_line (config, argc - opt_index, argv + opt_index,
+    if (parse_tag_command_line (local, argc - opt_index, argv + opt_index,
 				&query_string, tag_ops))
 	return EXIT_FAILURE;
 
@@ -519,14 +526,14 @@ notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
 	return EXIT_FAILURE;
     }
 
-    maildir = talloc_asprintf (config, "%s/%s", db_path, folder);
+    maildir = talloc_asprintf (local, "%s/%s", mail_root, folder);
     if (! maildir) {
 	fprintf (stderr, "Out of memory\n");
 	return EXIT_FAILURE;
     }
 
     strip_trailing (maildir, '/');
-    if (create_folder && ! maildir_create_folder (config, maildir, world_readable))
+    if (create_folder && ! maildir_create_folder (local, maildir, world_readable))
 	return EXIT_FAILURE;
 
     /* Set up our handler for SIGINT. We do not set SA_RESTART so that copying
@@ -538,15 +545,10 @@ notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
     sigaction (SIGINT, &action, NULL);
 
     /* Write the message to the Maildir new directory. */
-    newpath = maildir_write_new (config, STDIN_FILENO, maildir, world_readable);
+    newpath = maildir_write_new (local, STDIN_FILENO, maildir, world_readable);
     if (! newpath) {
 	return EXIT_FAILURE;
     }
-
-    status = notmuch_database_open (notmuch_config_get_database_path (config),
-				    NOTMUCH_DATABASE_MODE_READ_WRITE, &notmuch);
-    if (status)
-	return keep ? NOTMUCH_STATUS_SUCCESS : status_to_exit (status);
 
     notmuch_exit_if_unmatched_db_uuid (notmuch);
 
@@ -561,7 +563,7 @@ notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
     status = add_file (notmuch, newpath, tag_ops, synchronize_flags, keep, indexing_cli_choices.opts);
 
     /* Commit changes. */
-    close_status = notmuch_database_destroy (notmuch);
+    close_status = notmuch_database_close (notmuch);
     if (close_status) {
 	/* Hold on to the first error, if any. */
 	if (! status)
@@ -586,8 +588,12 @@ notmuch_insert_command (notmuch_config_t *config, int argc, char *argv[])
 
     if (hooks && status == NOTMUCH_STATUS_SUCCESS) {
 	/* Ignore hook failures. */
-	notmuch_run_hook (db_path, "post-insert");
+	notmuch_run_hook (notmuch, "post-insert");
     }
+
+    notmuch_database_destroy (notmuch);
+
+    talloc_free (local);
 
     return status_to_exit (status);
 }

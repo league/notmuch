@@ -24,6 +24,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <stdbool.h>
 
 char *
 strtok_len (char *s, const char *delim, size_t *len)
@@ -35,6 +36,28 @@ strtok_len (char *s, const char *delim, size_t *len)
     *len = strcspn (s, delim);
 
     return *len ? s : NULL;
+}
+
+const char *
+strsplit_len (const char *s, char delim, size_t *len)
+{
+    bool escaping = false;
+    size_t count = 0;
+
+    /* Skip initial unescaped delimiters */
+    while (*s && *s == delim)
+	s++;
+
+    while (s[count] && (escaping || s[count] != delim)) {
+	escaping = (s[count] == '\\');
+	count++;
+    }
+
+    if (count == 0)
+	return NULL;
+
+    *len = count;
+    return s;
 }
 
 const char *
@@ -160,6 +183,7 @@ parse_boolean_term (void *ctx, const char *str,
     /* Parse prefix */
     str = skip_space (str);
     const char *pos = strchr (str, ':');
+
     if (! pos || pos == str)
 	goto FAIL;
     *prefix_out = talloc_strndup (ctx, str, pos - str);

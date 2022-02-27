@@ -32,6 +32,8 @@
 
 #include "notmuch-private.h"
 
+#define ARRAY_SIZE(arr) (sizeof (arr) / sizeof (arr[0]))
+
 #ifdef SILENCE_XAPIAN_DEPRECATION_WARNINGS
 #define XAPIAN_DEPRECATED(D) D
 #endif
@@ -187,7 +189,11 @@ operator& (notmuch_field_flag_t a, notmuch_field_flag_t b)
 struct _notmuch_database {
     bool exception_reported;
 
-    char *path;
+    /* Path to actual database */
+    const char *xapian_path;
+
+    /* Path to config loaded, if any */
+    const char *config_path;
 
     int atomic_nesting;
     /* true if changes have been made in this atomic section */
@@ -226,6 +232,9 @@ struct _notmuch_database {
      * here, but at least they are small */
     notmuch_string_map_t *user_prefix;
     notmuch_string_map_t *user_header;
+
+    /* Cached and possibly overridden configuration */
+    notmuch_string_map_t *config;
 };
 
 /* Prior to database version 3, features were implied by the database
@@ -263,4 +272,23 @@ _notmuch_database_find_doc_ids (notmuch_database_t *notmuch,
 				const char *value,
 				Xapian::PostingIterator *begin,
 				Xapian::PostingIterator *end);
+
+#define NOTMUCH_DATABASE_VERSION 3
+
+/* features.cc */
+
+_notmuch_features
+_notmuch_database_parse_features (const void *ctx, const char *features, unsigned int version,
+				  char mode, char **incompat_out);
+
+char *
+_notmuch_database_print_features (const void *ctx, unsigned int features);
+
+/* prefix.cc */
+notmuch_status_t
+_notmuch_database_setup_standard_query_fields (notmuch_database_t *notmuch);
+
+notmuch_status_t
+_notmuch_database_setup_user_query_fields (notmuch_database_t *notmuch);
+
 #endif

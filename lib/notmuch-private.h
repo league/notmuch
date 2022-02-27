@@ -74,7 +74,7 @@ NOTMUCH_BEGIN_DECLS
 #define NOTMUCH_CLEAR_BIT(valp,  bit) \
     (_NOTMUCH_VALID_BIT (bit) ? (*(valp) &= ~(1ull << (bit))) : *(valp))
 
-#define unused(x) x __attribute__ ((unused))
+#define unused(x) x ## _unused __attribute__ ((unused))
 
 /* Thanks to Andrew Tridgell's (SAMBA's) talloc for this definition of
  * unlikely. The talloc source code comes to us via the GNU LGPL v. 3.
@@ -127,10 +127,23 @@ typedef enum _notmuch_private_status {
     NOTMUCH_PRIVATE_STATUS_OUT_OF_MEMORY		= NOTMUCH_STATUS_OUT_OF_MEMORY,
     NOTMUCH_PRIVATE_STATUS_READ_ONLY_DATABASE		= NOTMUCH_STATUS_READ_ONLY_DATABASE,
     NOTMUCH_PRIVATE_STATUS_XAPIAN_EXCEPTION		= NOTMUCH_STATUS_XAPIAN_EXCEPTION,
+    NOTMUCH_PRIVATE_STATUS_FILE_ERROR			= NOTMUCH_STATUS_FILE_ERROR,
     NOTMUCH_PRIVATE_STATUS_FILE_NOT_EMAIL		= NOTMUCH_STATUS_FILE_NOT_EMAIL,
     NOTMUCH_PRIVATE_STATUS_NULL_POINTER			= NOTMUCH_STATUS_NULL_POINTER,
     NOTMUCH_PRIVATE_STATUS_TAG_TOO_LONG			= NOTMUCH_STATUS_TAG_TOO_LONG,
     NOTMUCH_PRIVATE_STATUS_UNBALANCED_FREEZE_THAW	= NOTMUCH_STATUS_UNBALANCED_FREEZE_THAW,
+    NOTMUCH_PRIVATE_STATUS_UNBALANCED_ATOMIC		= NOTMUCH_STATUS_UNBALANCED_ATOMIC,
+    NOTMUCH_PRIVATE_STATUS_UNSUPPORTED_OPERATION	= NOTMUCH_STATUS_UNSUPPORTED_OPERATION,
+    NOTMUCH_PRIVATE_STATUS_UPGRADE_REQUIRED		= NOTMUCH_STATUS_UPGRADE_REQUIRED,
+    NOTMUCH_PRIVATE_STATUS_PATH_ERROR			= NOTMUCH_STATUS_PATH_ERROR,
+    NOTMUCH_PRIVATE_STATUS_IGNORED			= NOTMUCH_STATUS_IGNORED,
+    NOTMUCH_PRIVATE_STATUS_ILLEGAL_ARGUMENT		= NOTMUCH_STATUS_ILLEGAL_ARGUMENT,
+    NOTMUCH_PRIVATE_STATUS_MALFORMED_CRYPTO_PROTOCOL		= NOTMUCH_STATUS_MALFORMED_CRYPTO_PROTOCOL,
+    NOTMUCH_PRIVATE_STATUS_FAILED_CRYPTO_CONTEXT_CREATION	= NOTMUCH_STATUS_FAILED_CRYPTO_CONTEXT_CREATION,
+    NOTMUCH_PRIVATE_STATUS_UNKNOWN_CRYPTO_PROTOCOL		= NOTMUCH_STATUS_UNKNOWN_CRYPTO_PROTOCOL,
+    NOTMUCH_PRIVATE_STATUS_NO_CONFIG				= NOTMUCH_STATUS_NO_CONFIG,
+    NOTMUCH_PRIVATE_STATUS_NO_DATABASE				= NOTMUCH_STATUS_NO_DATABASE,
+    NOTMUCH_PRIVATE_STATUS_DATABASE_EXISTS			= NOTMUCH_STATUS_DATABASE_EXISTS,
 
     /* Then add our own private values. */
     NOTMUCH_PRIVATE_STATUS_TERM_TOO_LONG		= NOTMUCH_STATUS_LAST_STATUS,
@@ -191,9 +204,6 @@ _notmuch_message_id_compressed (void *ctx, const char *message_id);
 
 notmuch_status_t
 _notmuch_database_ensure_writable (notmuch_database_t *notmuch);
-
-notmuch_status_t
-_notmuch_database_reopen (notmuch_database_t *notmuch);
 
 void
 _notmuch_database_log (notmuch_database_t *notmuch,
@@ -636,6 +646,11 @@ _notmuch_string_map_append (notmuch_string_map_t *map,
 			    const char *key,
 			    const char *value);
 
+void
+_notmuch_string_map_set (notmuch_string_map_t *map,
+			 const char *key,
+			 const char *value);
+
 const char *
 _notmuch_string_map_get (notmuch_string_map_t *map, const char *key);
 
@@ -696,6 +711,24 @@ struct _notmuch_indexopts {
 #define CONFIG_HEADER_PREFIX "index.header."
 
 #define EMPTY_STRING(s) ((s)[0] == '\0')
+
+/* config.cc */
+notmuch_status_t
+_notmuch_config_load_from_database (notmuch_database_t *db);
+
+notmuch_status_t
+_notmuch_config_load_from_file (notmuch_database_t *db, GKeyFile *file);
+
+notmuch_status_t
+_notmuch_config_load_defaults (notmuch_database_t *db);
+
+void
+_notmuch_config_cache (notmuch_database_t *db, notmuch_config_key_t key, const char *val);
+
+/* open.cc */
+notmuch_status_t
+_notmuch_choose_xapian_path (void *ctx, const char *database_path, const char **xapian_path,
+			     char **message);
 
 NOTMUCH_END_DECLS
 

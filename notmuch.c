@@ -27,21 +27,24 @@
  *
  * The return value will be used as notmuch exit status code,
  * preferably EXIT_SUCCESS or EXIT_FAILURE.
+ *
+ * Each subcommand should be passed either a config object, or an open
+ * database
  */
-typedef int (*command_function_t) (notmuch_config_t *config, int argc, char *argv[]);
+typedef int (*command_function_t) (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 typedef struct command {
     const char *name;
     command_function_t function;
-    notmuch_config_mode_t config_mode;
+    notmuch_command_mode_t mode;
     const char *summary;
 } command_t;
 
 static int
-notmuch_help_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_help_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 static int
-notmuch_command (notmuch_config_t *config, int argc, char *argv[]);
+notmuch_command (notmuch_database_t *notmuch, int argc, char *argv[]);
 
 static int
 _help_for (const char *topic);
@@ -122,7 +125,8 @@ notmuch_process_shared_indexing_options (notmuch_database_t *notmuch)
 	notmuch_status_t status;
 	if (indexing_cli_choices.opts == NULL)
 	    return NOTMUCH_STATUS_OUT_OF_MEMORY;
-	status = notmuch_indexopts_set_decrypt_policy (indexing_cli_choices.opts, indexing_cli_choices.decrypt_policy);
+	status = notmuch_indexopts_set_decrypt_policy (indexing_cli_choices.opts,
+						       indexing_cli_choices.decrypt_policy);
 	if (status != NOTMUCH_STATUS_SUCCESS) {
 	    fprintf (stderr, "Error: Failed to set index decryption policy to %d. (%s)\n",
 		     indexing_cli_choices.decrypt_policy, notmuch_status_to_string (status));
@@ -136,41 +140,47 @@ notmuch_process_shared_indexing_options (notmuch_database_t *notmuch)
 
 
 static command_t commands[] = {
-    { NULL, notmuch_command, NOTMUCH_CONFIG_OPEN | NOTMUCH_CONFIG_CREATE,
+    { NULL, notmuch_command, NOTMUCH_COMMAND_CONFIG_CREATE | NOTMUCH_COMMAND_CONFIG_LOAD,
       "Notmuch main command." },
-    { "setup", notmuch_setup_command, NOTMUCH_CONFIG_OPEN | NOTMUCH_CONFIG_CREATE,
+    { "setup", notmuch_setup_command, NOTMUCH_COMMAND_CONFIG_CREATE | NOTMUCH_COMMAND_CONFIG_LOAD,
       "Interactively set up notmuch for first use." },
-    { "new", notmuch_new_command, NOTMUCH_CONFIG_OPEN,
+    { "new", notmuch_new_command,
+      NOTMUCH_COMMAND_DATABASE_EARLY | NOTMUCH_COMMAND_DATABASE_WRITE |
+      NOTMUCH_COMMAND_DATABASE_CREATE,
       "Find and import new messages to the notmuch database." },
-    { "insert", notmuch_insert_command, NOTMUCH_CONFIG_OPEN,
+    { "insert", notmuch_insert_command, NOTMUCH_COMMAND_DATABASE_EARLY |
+      NOTMUCH_COMMAND_DATABASE_WRITE,
       "Add a new message into the maildir and notmuch database." },
-    { "search", notmuch_search_command, NOTMUCH_CONFIG_OPEN,
+    { "search", notmuch_search_command, NOTMUCH_COMMAND_DATABASE_EARLY,
       "Search for messages matching the given search terms." },
-    { "address", notmuch_address_command, NOTMUCH_CONFIG_OPEN,
+    { "address", notmuch_address_command, NOTMUCH_COMMAND_DATABASE_EARLY,
       "Get addresses from messages matching the given search terms." },
-    { "show", notmuch_show_command, NOTMUCH_CONFIG_OPEN,
+    { "show", notmuch_show_command, NOTMUCH_COMMAND_DATABASE_EARLY,
       "Show all messages matching the search terms." },
-    { "count", notmuch_count_command, NOTMUCH_CONFIG_OPEN,
+    { "count", notmuch_count_command, NOTMUCH_COMMAND_DATABASE_EARLY,
       "Count messages matching the search terms." },
-    { "reply", notmuch_reply_command, NOTMUCH_CONFIG_OPEN,
+    { "reply", notmuch_reply_command, NOTMUCH_COMMAND_DATABASE_EARLY,
       "Construct a reply template for a set of messages." },
-    { "tag", notmuch_tag_command, NOTMUCH_CONFIG_OPEN,
+    { "tag", notmuch_tag_command, NOTMUCH_COMMAND_DATABASE_EARLY | NOTMUCH_COMMAND_DATABASE_WRITE,
       "Add/remove tags for all messages matching the search terms." },
-    { "dump", notmuch_dump_command, NOTMUCH_CONFIG_OPEN,
+    { "dump", notmuch_dump_command, NOTMUCH_COMMAND_DATABASE_EARLY | NOTMUCH_COMMAND_DATABASE_WRITE,
       "Create a plain-text dump of the tags for each message." },
-    { "restore", notmuch_restore_command, NOTMUCH_CONFIG_OPEN,
+    { "restore", notmuch_restore_command, NOTMUCH_COMMAND_DATABASE_EARLY |
+      NOTMUCH_COMMAND_DATABASE_WRITE,
       "Restore the tags from the given dump file (see 'dump')." },
-    { "compact", notmuch_compact_command, NOTMUCH_CONFIG_OPEN,
+    { "compact", notmuch_compact_command, NOTMUCH_COMMAND_DATABASE_EARLY |
+      NOTMUCH_COMMAND_DATABASE_WRITE,
       "Compact the notmuch database." },
-    { "reindex", notmuch_reindex_command, NOTMUCH_CONFIG_OPEN,
+    { "reindex", notmuch_reindex_command, NOTMUCH_COMMAND_DATABASE_EARLY |
+      NOTMUCH_COMMAND_DATABASE_WRITE,
       "Re-index all messages matching the search terms." },
-    { "config", notmuch_config_command, NOTMUCH_CONFIG_OPEN,
+    { "config", notmuch_config_command, NOTMUCH_COMMAND_CONFIG_LOAD,
       "Get or set settings in the notmuch configuration file." },
 #if WITH_EMACS
     { "emacs-mua", NULL, 0,
       "send mail with notmuch and emacs." },
 #endif
-    { "help", notmuch_help_command, NOTMUCH_CONFIG_CREATE, /* create but don't save config */
+    { "help", notmuch_help_command, NOTMUCH_COMMAND_CONFIG_CREATE, /* create but don't save config */
       "This message, or more detailed help for the named command." }
 };
 
@@ -244,14 +254,16 @@ void
 notmuch_exit_if_unsupported_format (void)
 {
     if (notmuch_format_version > NOTMUCH_FORMAT_CUR) {
-	fprintf (stderr, "\
+	fprintf (stderr,
+		 "\
 A caller requested output format version %d, but the installed notmuch\n\
 CLI only supports up to format version %d.  You may need to upgrade your\n\
 notmuch CLI.\n",
 		 notmuch_format_version, NOTMUCH_FORMAT_CUR);
 	exit (NOTMUCH_EXIT_FORMAT_TOO_NEW);
     } else if (notmuch_format_version < NOTMUCH_FORMAT_MIN) {
-	fprintf (stderr, "\
+	fprintf (stderr,
+		 "\
 A caller requested output format version %d, which is no longer supported\n\
 by the notmuch CLI (it requires at least version %d).  You may need to\n\
 upgrade your notmuch front-end.\n",
@@ -261,7 +273,8 @@ upgrade your notmuch front-end.\n",
 	/* Warn about old version requests so compatibility issues are
 	 * less likely when we drop support for a deprecated format
 	 * versions. */
-	fprintf (stderr, "\
+	fprintf (stderr,
+		 "\
 A caller requested deprecated output format version %d, which may not\n\
 be supported in the future.\n", notmuch_format_version);
     }
@@ -335,7 +348,7 @@ _help_for (const char *topic_name)
 }
 
 static int
-notmuch_help_command (unused (notmuch_config_t *config), int argc, char *argv[])
+notmuch_help_command (unused(notmuch_database_t *notmuch), int argc, char *argv[])
 {
     int opt_index;
 
@@ -359,35 +372,24 @@ notmuch_help_command (unused (notmuch_config_t *config), int argc, char *argv[])
  * to be more clever about this in the future.
  */
 static int
-notmuch_command (notmuch_config_t *config,
+notmuch_command (notmuch_database_t *notmuch,
 		 unused(int argc), unused(char **argv))
 {
-    char *db_path;
-    struct stat st;
 
-    /* If the user has never configured notmuch, then run
+    const char *config_path;
+
+    /* If the user has not created a configuration file, then run
      * notmuch_setup_command which will give a nice welcome message,
      * and interactively guide the user through the configuration. */
-    if (notmuch_config_is_new (config))
-	return notmuch_setup_command (config, 0, NULL);
-
-    /* Notmuch is already configured, but is there a database? */
-    db_path = talloc_asprintf (config, "%s/%s",
-			       notmuch_config_get_database_path (config),
-			       ".notmuch");
-    if (stat (db_path, &st)) {
+    config_path = notmuch_config_path (notmuch);
+    if (access (config_path, R_OK | F_OK) == -1) {
 	if (errno != ENOENT) {
-	    fprintf (stderr, "Error looking for notmuch database at %s: %s\n",
-		     db_path, strerror (errno));
+	    fprintf (stderr, "Error: %s config file access failed: %s\n", config_path,
+		     strerror (errno));
 	    return EXIT_FAILURE;
+	} else {
+	    return notmuch_setup_command (notmuch, 0, NULL);
 	}
-	printf ("Notmuch is configured, but there's not yet a database at\n\n\t%s\n\n",
-		db_path);
-	printf ("You probably want to run \"notmuch new\" now to create that database.\n\n"
-		"Note that the first run of \"notmuch new\" can take a very long time\n"
-		"and that the resulting database will use roughly the same amount of\n"
-		"storage space as the email being indexed.\n\n");
-	return EXIT_SUCCESS;
     }
 
     printf ("Notmuch is configured and appears to have a database. Excellent!\n\n"
@@ -404,8 +406,8 @@ notmuch_command (notmuch_config_t *config,
 	    "or any other interface described at https://notmuchmail.org\n\n"
 	    "And don't forget to run \"notmuch new\" whenever new mail arrives.\n\n"
 	    "Have fun, and may your inbox never have much mail.\n\n",
-	    notmuch_config_get_user_name (config),
-	    notmuch_config_get_user_primary_email (config));
+	    notmuch_config_get (notmuch, NOTMUCH_CONFIG_USER_NAME),
+	    notmuch_config_get (notmuch, NOTMUCH_CONFIG_PRIMARY_EMAIL));
 
     return EXIT_SUCCESS;
 }
@@ -452,12 +454,12 @@ main (int argc, char *argv[])
     const char *command_name = NULL;
     command_t *command;
     const char *config_file_name = NULL;
-    notmuch_config_t *config = NULL;
+    notmuch_database_t *notmuch = NULL;
     int opt_index;
-    int ret;
+    int ret = EXIT_SUCCESS;
 
     notmuch_opt_desc_t options[] = {
-	{ .opt_string = &config_file_name, .name = "config" },
+	{ .opt_string = &config_file_name, .name = "config", .allow_empty = TRUE },
 	{ .opt_inherit = notmuch_shared_options },
 	{ }
     };
@@ -496,18 +498,96 @@ main (int argc, char *argv[])
 	goto DONE;
     }
 
-    config = notmuch_config_open (local, config_file_name, command->config_mode);
-    if (! config) {
-	ret = EXIT_FAILURE;
-	goto DONE;
+    if (command->mode & NOTMUCH_COMMAND_DATABASE_EARLY) {
+	char *status_string = NULL;
+	notmuch_database_mode_t mode;
+	notmuch_status_t status;
+
+	if (command->mode & NOTMUCH_COMMAND_DATABASE_WRITE ||
+	    command->mode & NOTMUCH_COMMAND_DATABASE_CREATE)
+	    mode = NOTMUCH_DATABASE_MODE_READ_WRITE;
+	else
+	    mode = NOTMUCH_DATABASE_MODE_READ_ONLY;
+
+	if (command->mode & NOTMUCH_COMMAND_DATABASE_CREATE) {
+	    status = notmuch_database_create_with_config (NULL,
+							  config_file_name,
+							  NULL,
+							  &notmuch,
+							  &status_string);
+	    if (status && status != NOTMUCH_STATUS_DATABASE_EXISTS) {
+		if (status_string) {
+		    fputs (status_string, stderr);
+		    free (status_string);
+		}
+
+		if (status == NOTMUCH_STATUS_NO_CONFIG)
+		    fputs ("Try running 'notmuch setup' to create a configuration.", stderr);
+
+		return EXIT_FAILURE;
+	    }
+	}
+
+	if (notmuch == NULL) {
+	    status = notmuch_database_open_with_config (NULL,
+							mode,
+							config_file_name,
+							NULL,
+							&notmuch,
+							&status_string);
+	    if (status) {
+		if (status_string) {
+		    fputs (status_string, stderr);
+		    free (status_string);
+		}
+
+		return EXIT_FAILURE;
+	    }
+	}
     }
 
-    ret = (command->function)(config, argc - opt_index, argv + opt_index);
+    if (command->mode & NOTMUCH_COMMAND_CONFIG_LOAD) {
+	char *status_string = NULL;
+	notmuch_status_t status;
+	status = notmuch_database_load_config (NULL,
+					       config_file_name,
+					       NULL,
+					       &notmuch,
+					       &status_string);
+
+	if (status == NOTMUCH_STATUS_NO_CONFIG && ! (command->mode & NOTMUCH_COMMAND_CONFIG_CREATE)) {
+	    fputs ("Try running 'notmuch setup' to create a configuration.", stderr);
+	    goto DONE;
+	}
+	switch (status) {
+	case NOTMUCH_STATUS_NO_CONFIG:
+	    if (! (command->mode & NOTMUCH_COMMAND_CONFIG_CREATE)) {
+		fputs ("Try running 'notmuch setup' to create a configuration.", stderr);
+		goto DONE;
+	    }
+	    break;
+	case NOTMUCH_STATUS_NO_DATABASE:
+	    if (! command_name) {
+		printf ("Notmuch is configured, but no database was found.\n");
+		printf ("You probably want to run \"notmuch new\" now to create a database.\n\n"
+			"Note that the first run of \"notmuch new\" can take a very long time\n"
+			"and that the resulting database will use roughly the same amount of\n"
+			"storage space as the email being indexed.\n\n");
+		status = NOTMUCH_STATUS_SUCCESS;
+		goto DONE;
+	    }
+	    break;
+	case NOTMUCH_STATUS_SUCCESS:
+	    break;
+	default:
+	    goto DONE;
+	}
+
+    }
+
+    ret = (command->function)(notmuch, argc - opt_index, argv + opt_index);
 
   DONE:
-    if (config)
-	notmuch_config_close (config);
-
     talloc_report = getenv ("NOTMUCH_TALLOC_REPORT");
     if (talloc_report && strcmp (talloc_report, "") != 0) {
 	/* this relies on the previous call to

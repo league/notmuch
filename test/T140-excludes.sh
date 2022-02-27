@@ -39,6 +39,16 @@ deleted_id=$gen_msg_id
 output=$(notmuch search subject:deleted | notmuch_search_sanitize)
 test_expect_equal "$output" "thread:XXX   2001-01-05 [1/1] Notmuch Test Suite; Not deleted (inbox unread)"
 
+test_begin_subtest "Search, exclude \"deleted\" messages; alternate config file"
+cp ${NOTMUCH_CONFIG} alt-config
+notmuch config set search.exclude_tags
+notmuch --config=alt-config search subject:deleted | notmuch_search_sanitize > OUTPUT
+cp alt-config ${NOTMUCH_CONFIG}
+cat <<EOF > EXPECTED
+thread:XXX   2001-01-05 [1/1] Notmuch Test Suite; Not deleted (inbox unread)
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
 test_begin_subtest "Search, exclude \"deleted\" messages from message search"
 output=$(notmuch search --output=messages subject:deleted | notmuch_search_sanitize)
 test_expect_equal "$output" "id:$not_deleted_id"
@@ -276,6 +286,21 @@ test_begin_subtest "Count, default exclusion: tag in query (threads)"
 output=$(notmuch count --output=threads tag:test and tag:deleted)
 test_expect_equal "$output" "3"
 
+test_begin_subtest "Count, default exclusion, batch"
+notmuch count  --batch --output=messages<<EOF > OUTPUT
+tag:test
+tag:test and tag:deleted
+tag:test
+tag:test and tag:deleted
+EOF
+cat <<EOF >EXPECTED
+2
+4
+2
+4
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
 test_begin_subtest "Count, exclude=true: tag in query (messages)"
 output=$(notmuch count --exclude=true tag:test and tag:deleted)
 test_expect_equal "$output" "4"
@@ -364,7 +389,7 @@ Subject: No messages excluded: single match: reply 4
 Subject: No messages excluded: single match: reply 5"
 
 test_begin_subtest "Show, exclude=false"
-output=$(notmuch show --exclude=false tag:test | notmuch_show_sanitize_all  | egrep "Subject:|message{")
+output=$(notmuch show --exclude=false tag:test | notmuch_show_sanitize_all | egrep "Subject:|message{")
 test_expect_equal "$output" "message{ id:XXXXX depth:0 match:1 excluded:1 filename:XXXXX
 Subject: All messages excluded: single match: reply 2
 message{ id:XXXXX depth:0 match:1 excluded:1 filename:XXXXX

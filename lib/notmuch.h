@@ -209,6 +209,18 @@ typedef enum _notmuch_status {
      */
     NOTMUCH_STATUS_UNKNOWN_CRYPTO_PROTOCOL,
     /**
+     * Unable to load a config file
+     */
+    NOTMUCH_STATUS_NO_CONFIG,
+    /**
+     * Unable to load a database
+     */
+    NOTMUCH_STATUS_NO_DATABASE,
+    /**
+     * Database exists, so not (re)-created
+     */
+    NOTMUCH_STATUS_DATABASE_EXISTS,
+    /**
      * Not an actual status value. Just a way to find out how many
      * valid status values there are.
      */
@@ -236,6 +248,8 @@ typedef struct _notmuch_tags notmuch_tags_t;
 typedef struct _notmuch_directory notmuch_directory_t;
 typedef struct _notmuch_filenames notmuch_filenames_t;
 typedef struct _notmuch_config_list notmuch_config_list_t;
+typedef struct _notmuch_config_values notmuch_config_values_t;
+typedef struct _notmuch_config_pairs notmuch_config_pairs_t;
 typedef struct _notmuch_indexopts notmuch_indexopts_t;
 #endif /* __DOXYGEN__ */
 
@@ -301,52 +315,197 @@ typedef enum {
 } notmuch_database_mode_t;
 
 /**
- * Open an existing notmuch database located at 'path'.
- *
- * The database should have been created at some time in the past,
- * (not necessarily by this process), by calling
- * notmuch_database_create with 'path'. By default the database should be
- * opened for reading only. In order to write to the database you need to
- * pass the NOTMUCH_DATABASE_MODE_READ_WRITE mode.
- *
- * An existing notmuch database can be identified by the presence of a
- * directory named ".notmuch" below 'path'.
- *
- * The caller should call notmuch_database_destroy when finished with
- * this database.
- *
- * In case of any failure, this function returns an error status and
- * sets *database to NULL (after printing an error message on stderr).
- *
- * Return value:
- *
- * NOTMUCH_STATUS_SUCCESS: Successfully opened the database.
- *
- * NOTMUCH_STATUS_NULL_POINTER: The given 'path' argument is NULL.
- *
- * NOTMUCH_STATUS_OUT_OF_MEMORY: Out of memory.
- *
- * NOTMUCH_STATUS_FILE_ERROR: An error occurred trying to open the
- *	database file (such as permission denied, or file not found,
- *	etc.), or the database version is unknown.
- *
- * NOTMUCH_STATUS_XAPIAN_EXCEPTION: A Xapian exception occurred.
+ * Deprecated alias for notmuch_database_open_with_config with
+ * config_path=error_message=NULL
+ * @deprecated Deprecated as of libnotmuch 5.4 (notmuch 0.32)
  */
+/* NOTMUCH_DEPRECATED(5, 4) */
 notmuch_status_t
 notmuch_database_open (const char *path,
 		       notmuch_database_mode_t mode,
 		       notmuch_database_t **database);
 /**
- * Like notmuch_database_open, except optionally return an error
- * message. This message is allocated by malloc and should be freed by
- * the caller.
+ * Deprecated alias for notmuch_database_open_with_config with
+ * config_path=NULL
+ *
+ * @deprecated Deprecated as of libnotmuch 5.4 (notmuch 0.32)
+ *
  */
-
+/* NOTMUCH_DEPRECATED(5, 4) */
 notmuch_status_t
 notmuch_database_open_verbose (const char *path,
 			       notmuch_database_mode_t mode,
 			       notmuch_database_t **database,
 			       char **error_message);
+
+/**
+ * Open an existing notmuch database located at 'database_path', using
+ * configuration in 'config_path'.
+ *
+ * @param[in]	database_path
+ * @parblock
+ * Path to existing database.
+ *
+ * A notmuch database is a Xapian database containing appropriate
+ * metadata.
+ *
+ * The database should have been created at some time in the past,
+ * (not necessarily by this process), by calling
+ * notmuch_database_create.
+ *
+ * If 'database_path' is NULL, use the location specified
+ *
+ * - in the environment variable NOTMUCH_DATABASE, if non-empty
+ *
+ * - in a configuration file, located as described under 'config_path'
+ *
+ * - by $XDG_DATA_HOME/notmuch/$PROFILE where XDG_DATA_HOME defaults
+ *   to "$HOME/.local/share" and PROFILE as as discussed in
+ *   'profile'
+ *
+ * If 'database_path' is non-NULL, but does not appear to be a Xapian
+ * database, check for a directory '.notmuch/xapian' below
+ * 'database_path' (this is the behavior of
+ * notmuch_database_open_verbose pre-0.32).
+ *
+ * @endparblock
+ * @param[in]	mode
+ * @parblock
+ * Mode to open database. Use one of #NOTMUCH_DATABASE_MODE_READ_WRITE
+ * or #NOTMUCH_DATABASE_MODE_READ_ONLY
+ *
+ * @endparblock
+ * @param[in]  config_path
+ * @parblock
+ * Path to config file.
+ *
+ * Config file is key-value, with mandatory sections. See
+ * <em>notmuch-config(5)</em> for more information. The key-value pair
+ * overrides the corresponding configuration data stored in the
+ * database (see <em>notmuch_database_get_config</em>)
+ *
+ * If <em>config_path</em> is NULL use the path specified
+ *
+ * - in environment variable <em>NOTMUCH_CONFIG</em>, if non-empty
+ *
+ * - by  <em>XDG_CONFIG_HOME</em>/notmuch/ where
+ *   XDG_CONFIG_HOME defaults to "$HOME/.config".
+ *
+ * - by $HOME/.notmuch-config
+ *
+ * If <em>config_path</em> is "" (empty string) then do not
+ * open any configuration file.
+ * @endparblock
+ * @param[in] profile:
+ * @parblock
+ * Name of profile (configuration/database variant).
+ *
+ * If non-NULL, append to the directory / file path determined for
+ * <em>config_path</em> and <em>database_path</em>.
+ *
+ * If NULL then use
+ * - environment variable NOTMUCH_PROFILE if defined,
+ * - otherwise "default" for directories and "" (empty string) for paths.
+ *
+ * @endparblock
+ * @param[out] database
+ * @parblock
+ * Pointer to database object. May not be NULL.
+ *
+ * The caller should call notmuch_database_destroy when finished with
+ * this database.
+ *
+ * In case of any failure, this function returns an error status and
+ * sets *database to NULL.
+ *
+ * @endparblock
+ * @param[out] error_message
+ * If non-NULL, store error message from opening the database.
+ * Any such message is allocated by \a malloc(3) and should be freed
+ * by the caller.
+ *
+ * @retval NOTMUCH_STATUS_SUCCESS: Successfully opened the database.
+ *
+ * @retval NOTMUCH_STATUS_NULL_POINTER: The given \a database
+ * argument is NULL.
+ *
+ * @retval NOTMUCH_STATUS_OUT_OF_MEMORY: Out of memory.
+ *
+ * @retval NOTMUCH_STATUS_FILE_ERROR: An error occurred trying to open the
+ *	database or config file (such as permission denied, or file not found,
+ *	etc.), or the database version is unknown.
+ *
+ * @retval NOTMUCH_STATUS_XAPIAN_EXCEPTION: A Xapian exception occurred.
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ */
+
+notmuch_status_t
+notmuch_database_open_with_config (const char *database_path,
+				   notmuch_database_mode_t mode,
+				   const char *config_path,
+				   const char *profile,
+				   notmuch_database_t **database,
+				   char **error_message);
+
+
+/**
+ * Loads configuration from config file, database, and/or defaults
+ *
+ * For description of arguments, @see notmuch_database_open_with_config
+ *
+ * @retval NOTMUCH_STATUS_SUCCESS: Successfully loaded configuration.
+ *
+ * @retval NOTMUCH_STATUS_NO_CONFIG: No config file was loaded. Not fatal.
+ *
+ * @retval NOTMUCH_STATUS_NO_DATABASE: No config information was
+ *	loaded from a database. Not fatal.
+ *
+ * @retval NOTMUCH_STATUS_OUT_OF_MEMORY: Out of memory.
+ *
+ * @retval NOTMUCH_STATUS_FILE_ERROR: An error occurred trying to open the
+ *	database or config file (such as permission denied, or file not found,
+ *	etc.)
+ *
+ * @retval NOTMUCH_STATUS_XAPIAN_EXCEPTION: A Xapian exception occurred.
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ */
+
+notmuch_status_t
+notmuch_database_load_config (const char *database_path,
+			      const char *config_path,
+			      const char *profile,
+			      notmuch_database_t **database,
+			      char **error_message);
+
+/**
+ * Create a new notmuch database located at 'database_path', using
+ * configuration in 'config_path'.
+ *
+ * For description of arguments, @see notmuch_database_open_with_config
+ *
+ * @retval NOTMUCH_STATUS_SUCCESS: Successfully created the database.
+ *
+ * @retval NOTMUCH_STATUS_DATABASE_EXISTS: Database already exists, not created
+ *
+ * @retval NOTMUCH_STATUS_OUT_OF_MEMORY: Out of memory.
+ *
+ * @retval NOTMUCH_STATUS_FILE_ERROR: An error occurred trying to open the
+ *	database or config file (such as permission denied, or file not found,
+ *	etc.)
+ *
+ * @retval NOTMUCH_STATUS_XAPIAN_EXCEPTION: A Xapian exception occurred.
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ */
+
+notmuch_status_t
+notmuch_database_create_with_config (const char *database_path,
+				     const char *config_path,
+				     const char *profile,
+				     notmuch_database_t **database,
+				     char **error_message);
 
 /**
  * Retrieve last status string for given database.
@@ -409,6 +568,18 @@ notmuch_database_compact (const char *path,
 			  const char *backup_path,
 			  notmuch_compact_status_cb_t status_cb,
 			  void *closure);
+
+/**
+ * Like notmuch_database_compact, but take an open database as a
+ * parameter.
+ *
+ * @since libnnotmuch 5.4 (notmuch 0.32)
+ */
+notmuch_status_t
+notmuch_database_compact_db (notmuch_database_t *database,
+			     const char *backup_path,
+			     notmuch_compact_status_cb_t status_cb,
+			     void *closure);
 
 /**
  * Destroy the notmuch database, closing it if necessary and freeing
@@ -744,6 +915,19 @@ notmuch_database_find_message_by_filename (notmuch_database_t *notmuch,
  */
 notmuch_tags_t *
 notmuch_database_get_all_tags (notmuch_database_t *db);
+
+/**
+ * Reopen an open notmuch database.
+ *
+ * @param [in] db	open notmuch database
+ * @param [in] mode	mode (read only or read-write) for reopened database.
+ *
+ * @retval #NOTMUCH_STATUS_SUCCESS
+ * @retval #NOTMUCH_STATUS_ILLEGAL_ARGUMENT	The passed database was not open.
+ * @retval #NOTMUCH_STATUS_XAPIAN_EXCEPTION	A Xapian exception occured
+ */
+notmuch_status_t
+notmuch_database_reopen (notmuch_database_t *db, notmuch_database_mode_t mode);
 
 /**
  * Create a new query for 'database'.
@@ -1497,7 +1681,7 @@ typedef enum _notmuch_message_flag {
  * @deprecated Deprecated as of libnotmuch 5.3 (notmuch 0.31). Please
  * use notmuch_message_get_flag_st instead.
  */
-NOTMUCH_DEPRECATED(5,3)
+NOTMUCH_DEPRECATED (5, 3)
 notmuch_bool_t
 notmuch_message_get_flag (notmuch_message_t *message,
 			  notmuch_message_flag_t flag);
@@ -1692,7 +1876,7 @@ notmuch_message_maildir_flags_to_tags (notmuch_message_t *message);
  * @returns FALSE in case of error
  * @deprecated libnotmuch 5.3 (notmuch 0.31)
  */
-NOTMUCH_DEPRECATED(5, 3)
+NOTMUCH_DEPRECATED (5, 3)
 notmuch_bool_t
 notmuch_message_has_maildir_flag (notmuch_message_t *message, char flag);
 
@@ -2239,6 +2423,11 @@ notmuch_filenames_destroy (notmuch_filenames_t *filenames);
  * set config 'key' to 'value'
  *
  * @since libnotmuch 4.4 (notmuch 0.23)
+ * @retval #NOTMUCH_STATUS_READ_ONLY_DATABASE: Database was opened in
+ *	read-only mode so message cannot be modified.
+ * @retval #NOTMUCH_STATUS_XAPIAN_EXCEPTION: an exception was thrown
+ *      accessing the database.
+ * @retval #NOTMUCH_STATUS_SUCCESS
  */
 notmuch_status_t
 notmuch_database_set_config (notmuch_database_t *db, const char *key, const char *value);
@@ -2253,6 +2442,7 @@ notmuch_database_set_config (notmuch_database_t *db, const char *key, const char
  * caller.
  *
  * @since libnotmuch 4.4 (notmuch 0.23)
+ *
  */
 notmuch_status_t
 notmuch_database_get_config (notmuch_database_t *db, const char *key, char **value);
@@ -2263,7 +2453,8 @@ notmuch_database_get_config (notmuch_database_t *db, const char *key, char **val
  * @since libnotmuch 4.4 (notmuch 0.23)
  */
 notmuch_status_t
-notmuch_database_get_config_list (notmuch_database_t *db, const char *prefix, notmuch_config_list_t **out);
+notmuch_database_get_config_list (notmuch_database_t *db, const char *prefix,
+				  notmuch_config_list_t **out);
 
 /**
  * Is 'config_list' iterator valid (i.e. _key, _value, _move_to_next can be called).
@@ -2313,6 +2504,252 @@ notmuch_config_list_move_to_next (notmuch_config_list_t *config_list);
 void
 notmuch_config_list_destroy (notmuch_config_list_t *config_list);
 
+/**
+ * Configuration keys known to libnotmuch
+ */
+typedef enum _notmuch_config_key {
+    NOTMUCH_CONFIG_FIRST,
+    NOTMUCH_CONFIG_DATABASE_PATH = NOTMUCH_CONFIG_FIRST,
+    NOTMUCH_CONFIG_MAIL_ROOT,
+    NOTMUCH_CONFIG_HOOK_DIR,
+    NOTMUCH_CONFIG_BACKUP_DIR,
+    NOTMUCH_CONFIG_EXCLUDE_TAGS,
+    NOTMUCH_CONFIG_NEW_TAGS,
+    NOTMUCH_CONFIG_NEW_IGNORE,
+    NOTMUCH_CONFIG_SYNC_MAILDIR_FLAGS,
+    NOTMUCH_CONFIG_PRIMARY_EMAIL,
+    NOTMUCH_CONFIG_OTHER_EMAIL,
+    NOTMUCH_CONFIG_USER_NAME,
+    NOTMUCH_CONFIG_LAST
+} notmuch_config_key_t;
+
+/**
+ * get a configuration value from an open database.
+ *
+ * This value reflects all configuration information given at the time
+ * the database was opened.
+ *
+ * @param[in] notmuch database
+ * @param[in] key configuration key
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval NULL if 'key' unknown or if no value is known for
+ *         'key'.  Otherwise returns a string owned by notmuch which should
+ *         not be modified nor freed by the caller.
+ */
+const char *
+notmuch_config_get (notmuch_database_t *notmuch, notmuch_config_key_t key);
+
+/**
+ * set a configuration value from in an open database.
+ *
+ * This value reflects all configuration information given at the time
+ * the database was opened.
+ *
+ * @param[in,out] notmuch database open read/write
+ * @param[in] key configuration key
+ * @param[in] val configuration value
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval returns any return value for notmuch_database_set_config.
+ */
+notmuch_status_t
+notmuch_config_set (notmuch_database_t *notmuch, notmuch_config_key_t key, const char *val);
+
+/**
+ * Returns an iterator for a ';'-delimited list of configuration values
+ *
+ * These values reflect all configuration information given at the
+ * time the database was opened.
+ *
+ * @param[in] notmuch database
+ * @param[in] key configuration key
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval NULL in case of error.
+ */
+notmuch_config_values_t *
+notmuch_config_get_values (notmuch_database_t *notmuch, notmuch_config_key_t key);
+
+/**
+ * Returns an iterator for a ';'-delimited list of configuration values
+ *
+ * These values reflect all configuration information given at the
+ * time the database was opened.
+ *
+ * @param[in] notmuch database
+ * @param[in] key configuration key
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval NULL in case of error.
+ */
+notmuch_config_values_t *
+notmuch_config_get_values_string (notmuch_database_t *notmuch, const char *key);
+
+/**
+ * Is the given 'config_values' iterator pointing at a valid element.
+ *
+ * @param[in] values iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval FALSE if passed a NULL pointer, or the iterator is exhausted.
+ *
+ */
+notmuch_bool_t
+notmuch_config_values_valid (notmuch_config_values_t *values);
+
+/**
+ * Get the current value from the 'values' iterator
+ *
+ * @param[in] values iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval a string with the same lifetime as the iterator
+ */
+const char *
+notmuch_config_values_get (notmuch_config_values_t *values);
+
+/**
+ * Move the 'values' iterator to the next element
+ *
+ * @param[in,out] values iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ */
+void
+notmuch_config_values_move_to_next (notmuch_config_values_t *values);
+
+
+/**
+ * reset the 'values' iterator to the first element
+ *
+ * @param[in,out] values iterator. A NULL value is ignored.
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ */
+void
+notmuch_config_values_start (notmuch_config_values_t *values);
+
+/**
+ * Destroy a config values iterator, along with any associated
+ * resources.
+ *
+ * @param[in,out] values iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ */
+void
+notmuch_config_values_destroy (notmuch_config_values_t *values);
+
+
+/**
+ * Returns an iterator for a (key, value) configuration pairs
+ *
+ * @param[in] notmuch database
+ * @param[in] prefix prefix for keys. Pass "" for all keys.
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval NULL in case of error.
+ */
+notmuch_config_pairs_t *
+notmuch_config_get_pairs (notmuch_database_t *notmuch,
+			  const char *prefix);
+
+/**
+ * Is the given 'config_pairs' iterator pointing at a valid element.
+ *
+ * @param[in] pairs iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval FALSE if passed a NULL pointer, or the iterator is exhausted.
+ *
+ */
+notmuch_bool_t
+notmuch_config_pairs_valid (notmuch_config_pairs_t *pairs);
+
+/**
+ * Move the 'config_pairs' iterator to the next element
+ *
+ * @param[in,out] pairs iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ */
+void
+notmuch_config_pairs_move_to_next (notmuch_config_pairs_t *pairs);
+
+/**
+ * Get the current key from the 'config_pairs' iterator
+ *
+ * @param[in] pairs iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval a string with the same lifetime as the iterator
+ */
+const char *
+notmuch_config_pairs_key (notmuch_config_pairs_t *pairs);
+
+/**
+ * Get the current value from the 'config_pairs' iterator
+ *
+ * @param[in] pairs iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval a string with the same lifetime as the iterator
+ */
+const char *
+notmuch_config_pairs_value (notmuch_config_pairs_t *pairs);
+
+/**
+ * Destroy a config_pairs iterator, along with any associated
+ * resources.
+ *
+ * @param[in,out] pairs iterator
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ */
+void
+notmuch_config_pairs_destroy (notmuch_config_pairs_t *pairs);
+
+/**
+ * get a configuration value from an open database as Boolean
+ *
+ * This value reflects all configuration information given at the time
+ * the database was opened.
+ *
+ * @param[in] notmuch database
+ * @param[in] key configuration key
+ * @param[out] val configuration value, converted to Boolean
+ *
+ * @since libnotmuch 5.4 (notmuch 0.32)
+ *
+ * @retval #NOTMUCH_STATUS_ILLEGAL_ARGUMENT if either key is unknown
+ * or the corresponding value does not convert to Boolean.
+ */
+notmuch_status_t
+notmuch_config_get_bool (notmuch_database_t *notmuch,
+			 notmuch_config_key_t key,
+			 notmuch_bool_t *val);
+
+/**
+ * return the path of the config file loaded, if any
+ *
+ * @retval NULL if no config file was loaded
+ */
+const char *
+notmuch_config_path (notmuch_database_t *notmuch);
 
 /**
  * get the current default indexing options for a given database.
