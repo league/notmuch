@@ -22,6 +22,9 @@
 #include "notmuch-private.h"
 #include "database-private.h"
 
+#include <pwd.h>
+#include <netdb.h>
+
 static const std::string CONFIG_PREFIX = "C";
 
 struct _notmuch_config_list {
@@ -38,7 +41,11 @@ struct _notmuch_config_values {
     void *children; /* talloc_context */
 };
 
-static const char * _notmuch_config_key_to_string (notmuch_config_key_t key);
+struct _notmuch_config_pairs {
+    notmuch_string_map_iterator_t *iter;
+};
+
+static const char *_notmuch_config_key_to_string (notmuch_config_key_t key);
 
 static int
 _notmuch_config_list_destroy (notmuch_config_list_t *list)
@@ -104,7 +111,7 @@ notmuch_database_get_config (notmuch_database_t *notmuch,
 			     const char *key,
 			     char **value)
 {
-    const char* stored_val;
+    const char *stored_val;
     notmuch_status_t status;
 
     if (! notmuch->config) {
@@ -119,7 +126,7 @@ notmuch_database_get_config (notmuch_database_t *notmuch,
     if (! stored_val) {
 	/* XXX in principle this API should be fixed so empty string
 	 * is distinguished from not found */
-	*value = strdup("");
+	*value = strdup ("");
     } else {
 	*value = strdup (stored_val);
     }
@@ -152,7 +159,8 @@ notmuch_database_get_config_list (notmuch_database_t *notmuch,
 	talloc_set_destructor (list, _notmuch_config_list_destroy);
 
     } catch (const Xapian::Error &error) {
-	_notmuch_database_log (notmuch, "A Xapian exception occurred getting metadata iterator: %s.\n",
+	_notmuch_database_log (notmuch,
+			       "A Xapian exception occurred getting metadata iterator: %s.\n",
 			       error.get_msg ().c_str ());
 	notmuch->exception_reported = true;
 	status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
@@ -167,7 +175,7 @@ notmuch_database_get_config_list (notmuch_database_t *notmuch,
 	    if (status != NOTMUCH_STATUS_XAPIAN_EXCEPTION)
 		_notmuch_config_list_destroy (list);
 	}
-    }  else {
+    } else {
 	talloc_set_destructor (list, _notmuch_config_list_destroy);
     }
 
@@ -183,7 +191,9 @@ notmuch_config_list_valid (notmuch_config_list_t *metadata)
     return true;
 }
 
-static inline char * _key_from_iterator (notmuch_config_list_t *list) {
+static inline char *
+_key_from_iterator (notmuch_config_list_t *list)
+{
     return talloc_strdup (list, (*list->iterator).c_str () + CONFIG_PREFIX.length ());
 }
 
@@ -239,7 +249,7 @@ _notmuch_config_load_from_database (notmuch_database_t *notmuch)
     if (notmuch->config == NULL)
 	notmuch->config = _notmuch_string_map_create (notmuch);
 
-    if (unlikely(notmuch->config == NULL))
+    if (unlikely (notmuch->config == NULL))
 	return NOTMUCH_STATUS_OUT_OF_MEMORY;
 
     status = notmuch_database_get_config_list (notmuch, "", &list);
@@ -258,16 +268,22 @@ _notmuch_config_load_from_database (notmuch_database_t *notmuch)
 notmuch_config_values_t *
 notmuch_config_get_values (notmuch_database_t *notmuch, notmuch_config_key_t key)
 {
-    notmuch_config_values_t *values = NULL;
-    bool ok = false;
-
     const char *key_str = _notmuch_config_key_to_string (key);
 
     if (! key_str)
-	goto DONE;
+	return NULL;
+
+    return notmuch_config_get_values_string (notmuch, key_str);
+}
+
+notmuch_config_values_t *
+notmuch_config_get_values_string (notmuch_database_t *notmuch, const char *key_str)
+{
+    notmuch_config_values_t *values = NULL;
+    bool ok = false;
 
     values = talloc (notmuch, notmuch_config_values_t);
-    if (unlikely(! values))
+    if (unlikely (! values))
 	goto DONE;
 
     values->children = talloc_new (values);
@@ -279,17 +295,18 @@ notmuch_config_get_values (notmuch_database_t *notmuch, notmuch_config_key_t key
     values->iterator = strsplit_len (values->string, ';', &(values->tok_len));
     ok = true;
 
- DONE:
-    if (!ok) {
+  DONE:
+    if (! ok) {
 	if (values)
-	    talloc_free(values);
+	    talloc_free (values);
 	return NULL;
     }
     return values;
 }
 
 notmuch_bool_t
-notmuch_config_values_valid (notmuch_config_values_t *values) {
+notmuch_config_values_valid (notmuch_config_values_t *values)
+{
     if (! values)
 	return false;
 
@@ -297,12 +314,14 @@ notmuch_config_values_valid (notmuch_config_values_t *values) {
 }
 
 const char *
-notmuch_config_values_get (notmuch_config_values_t *values) {
+notmuch_config_values_get (notmuch_config_values_t *values)
+{
     return talloc_strndup (values, values->iterator, values->tok_len);
 }
 
 void
-notmuch_config_values_start (notmuch_config_values_t *values) {
+notmuch_config_values_start (notmuch_config_values_t *values)
+{
     if (values == NULL)
 	return;
     if (values->children) {
@@ -315,14 +334,57 @@ notmuch_config_values_start (notmuch_config_values_t *values) {
 }
 
 void
-notmuch_config_values_move_to_next (notmuch_config_values_t *values) {
+notmuch_config_values_move_to_next (notmuch_config_values_t *values)
+{
     values->iterator += values->tok_len;
     values->iterator = strsplit_len (values->iterator, ';', &(values->tok_len));
 }
 
 void
-notmuch_config_values_destroy (notmuch_config_values_t *values) {
+notmuch_config_values_destroy (notmuch_config_values_t *values)
+{
     talloc_free (values);
+}
+
+notmuch_config_pairs_t *
+notmuch_config_get_pairs (notmuch_database_t *notmuch,
+			  const char *prefix)
+{
+    notmuch_config_pairs_t *pairs = talloc (notmuch, notmuch_config_pairs_t);
+
+    pairs->iter = _notmuch_string_map_iterator_create (notmuch->config, prefix, false);
+    return pairs;
+}
+
+notmuch_bool_t
+notmuch_config_pairs_valid (notmuch_config_pairs_t *pairs)
+{
+    return _notmuch_string_map_iterator_valid (pairs->iter);
+}
+
+void
+notmuch_config_pairs_move_to_next (notmuch_config_pairs_t *pairs)
+{
+    _notmuch_string_map_iterator_move_to_next (pairs->iter);
+}
+
+const char *
+notmuch_config_pairs_key (notmuch_config_pairs_t *pairs)
+{
+    return _notmuch_string_map_iterator_key (pairs->iter);
+}
+
+const char *
+notmuch_config_pairs_value (notmuch_config_pairs_t *pairs)
+{
+    return _notmuch_string_map_iterator_value (pairs->iter);
+}
+
+void
+notmuch_config_pairs_destroy (notmuch_config_pairs_t *pairs)
+{
+    _notmuch_string_map_iterator_destroy (pairs->iter);
+    talloc_free (pairs);
 }
 
 notmuch_status_t
@@ -330,32 +392,39 @@ _notmuch_config_load_from_file (notmuch_database_t *notmuch,
 				GKeyFile *file)
 {
     notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
-    gchar **groups, **keys, *val;
+    gchar **groups = NULL, **keys, *val;
 
     if (notmuch->config == NULL)
 	notmuch->config = _notmuch_string_map_create (notmuch);
 
-    if (unlikely(notmuch->config == NULL)) {
+    if (unlikely (notmuch->config == NULL)) {
 	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
 	goto DONE;
     }
 
-    for (groups = g_key_file_get_groups (file, NULL); *groups; groups++) {
-	for (keys = g_key_file_get_keys (file, *groups, NULL, NULL); *keys; keys++) {
-	    char *absolute_key = talloc_asprintf(notmuch, "%s.%s", *groups,  *keys);
-	    val = g_key_file_get_value (file, *groups, *keys, NULL);
+    groups = g_key_file_get_groups (file, NULL);
+    for (gchar **grp = groups; *grp; grp++) {
+	keys = g_key_file_get_keys (file, *grp, NULL, NULL);
+	for (gchar **keys_p = keys; *keys_p; keys_p++) {
+	    char *absolute_key = talloc_asprintf (notmuch, "%s.%s", *grp,  *keys_p);
+	    val = g_key_file_get_value (file, *grp, *keys_p, NULL);
 	    if (! val) {
 		status = NOTMUCH_STATUS_FILE_ERROR;
 		goto DONE;
 	    }
 	    _notmuch_string_map_set (notmuch->config, absolute_key, val);
+	    g_free (val);
 	    talloc_free (absolute_key);
 	    if (status)
 		goto DONE;
 	}
+	g_strfreev (keys);
     }
 
- DONE:
+  DONE:
+    if (groups)
+	g_strfreev (groups);
+
     return status;
 }
 
@@ -386,12 +455,108 @@ notmuch_config_get_bool (notmuch_database_t *notmuch, notmuch_config_key_t key, 
 }
 
 static const char *
-_notmuch_config_key_to_string (notmuch_config_key_t key) {
+_get_name_from_passwd_file (void *ctx)
+{
+    long pw_buf_size;
+    char *pw_buf;
+    struct passwd passwd, *ignored;
+    const char *name;
+    int e;
+
+    pw_buf_size = sysconf (_SC_GETPW_R_SIZE_MAX);
+    if (pw_buf_size == -1) pw_buf_size = 64;
+    pw_buf = (char *) talloc_size (ctx, pw_buf_size);
+
+    while ((e = getpwuid_r (getuid (), &passwd, pw_buf,
+			    pw_buf_size, &ignored)) == ERANGE) {
+	pw_buf_size = pw_buf_size * 2;
+	pw_buf = (char *) talloc_zero_size (ctx, pw_buf_size);
+    }
+
+    if (e == 0) {
+	char *comma = strchr (passwd.pw_gecos, ',');
+	if (comma)
+	    name = talloc_strndup (ctx, passwd.pw_gecos,
+				   comma - passwd.pw_gecos);
+	else
+	    name = talloc_strdup (ctx, passwd.pw_gecos);
+    } else {
+	name = talloc_strdup (ctx, "");
+    }
+
+    talloc_free (pw_buf);
+
+    return name;
+}
+
+static char *
+_get_username_from_passwd_file (void *ctx)
+{
+    long pw_buf_size;
+    char *pw_buf;
+    struct passwd passwd, *ignored;
+    char *name;
+    int e;
+
+    pw_buf_size = sysconf (_SC_GETPW_R_SIZE_MAX);
+    if (pw_buf_size == -1) pw_buf_size = 64;
+    pw_buf = (char *) talloc_zero_size (ctx, pw_buf_size);
+
+    while ((e = getpwuid_r (getuid (), &passwd, pw_buf,
+			    pw_buf_size, &ignored)) == ERANGE) {
+	pw_buf_size = pw_buf_size * 2;
+	pw_buf = (char *) talloc_zero_size (ctx, pw_buf_size);
+    }
+
+    if (e == 0)
+	name = talloc_strdup (ctx, passwd.pw_name);
+    else
+	name = talloc_strdup (ctx, "");
+
+    talloc_free (pw_buf);
+
+    return name;
+}
+
+static const char *
+_get_email_from_passwd_file (void *ctx)
+{
+
+    char hostname[256];
+    struct hostent *hostent;
+    const char *domainname;
+    char *email;
+
+    char *username = _get_username_from_passwd_file (ctx);
+
+    gethostname (hostname, 256);
+    hostname[255] = '\0';
+
+    hostent = gethostbyname (hostname);
+    if (hostent && (domainname = strchr (hostent->h_name, '.')))
+	domainname += 1;
+    else
+	domainname = "(none)";
+
+    email = talloc_asprintf (ctx, "%s@%s.%s",
+			     username, hostname, domainname);
+
+    talloc_free (username);
+    return email;
+}
+
+static const char *
+_notmuch_config_key_to_string (notmuch_config_key_t key)
+{
     switch (key) {
     case NOTMUCH_CONFIG_DATABASE_PATH:
 	return "database.path";
+    case NOTMUCH_CONFIG_MAIL_ROOT:
+	return "database.mail_root";
     case NOTMUCH_CONFIG_HOOK_DIR:
 	return "database.hook_dir";
+    case NOTMUCH_CONFIG_BACKUP_DIR:
+	return "database.backup_dir";
     case NOTMUCH_CONFIG_EXCLUDE_TAGS:
 	return "search.exclude_tags";
     case NOTMUCH_CONFIG_NEW_TAGS:
@@ -412,66 +577,100 @@ _notmuch_config_key_to_string (notmuch_config_key_t key) {
 }
 
 static const char *
-_notmuch_config_default (void *ctx, notmuch_config_key_t key) {
+_notmuch_config_default (notmuch_database_t *notmuch, notmuch_config_key_t key)
+{
     char *path;
+    const char *name, *email;
 
     switch (key) {
     case NOTMUCH_CONFIG_DATABASE_PATH:
 	path = getenv ("MAILDIR");
 	if (path)
-	    path = talloc_strdup (ctx, path);
+	    path = talloc_strdup (notmuch, path);
 	else
-	    path = talloc_asprintf (ctx, "%s/mail",
+	    path = talloc_asprintf (notmuch, "%s/mail",
 				    getenv ("HOME"));
 	return path;
+    case NOTMUCH_CONFIG_MAIL_ROOT:
+	/* by default, mail root is the same as database path */
+	return notmuch_database_get_path (notmuch);
     case NOTMUCH_CONFIG_EXCLUDE_TAGS:
 	return "";
     case NOTMUCH_CONFIG_NEW_TAGS:
-	return "inbox;unread";
+	return "unread;inbox";
     case NOTMUCH_CONFIG_SYNC_MAILDIR_FLAGS:
 	return "true";
-    case NOTMUCH_CONFIG_HOOK_DIR:
-    case NOTMUCH_CONFIG_NEW_IGNORE:
     case NOTMUCH_CONFIG_USER_NAME:
+	name = getenv ("NAME");
+	if (name)
+	    name = talloc_strdup (notmuch, name);
+	else
+	    name = _get_name_from_passwd_file (notmuch);
+	return name;
     case NOTMUCH_CONFIG_PRIMARY_EMAIL:
+	email = getenv ("EMAIL");
+	if (email)
+	    email = talloc_strdup (notmuch, email);
+	else
+	    email = _get_email_from_passwd_file (notmuch);
+	return email;
+    case NOTMUCH_CONFIG_NEW_IGNORE:
+	return "";
+    case NOTMUCH_CONFIG_HOOK_DIR:
+    case NOTMUCH_CONFIG_BACKUP_DIR:
     case NOTMUCH_CONFIG_OTHER_EMAIL:
 	return NULL;
     default:
     case NOTMUCH_CONFIG_LAST:
 	INTERNAL_ERROR ("illegal key enum %d", key);
-   }
+    }
 }
 
 notmuch_status_t
-_notmuch_config_load_defaults (notmuch_database_t *notmuch) {
+_notmuch_config_load_defaults (notmuch_database_t *notmuch)
+{
     notmuch_config_key_t key;
+
     for (key = NOTMUCH_CONFIG_FIRST;
 	 key < NOTMUCH_CONFIG_LAST;
-	 key = notmuch_config_key_t(key + 1)) {
+	 key = notmuch_config_key_t (key + 1)) {
 	const char *val = notmuch_config_get (notmuch, key);
 	const char *key_string = _notmuch_config_key_to_string (key);
 
 	val = _notmuch_string_map_get (notmuch->config, key_string);
 	if (! val) {
-	    _notmuch_string_map_set (notmuch->config, key_string, _notmuch_config_default (notmuch, key));
+	    _notmuch_string_map_set (notmuch->config, key_string, _notmuch_config_default (notmuch,
+											   key));
 	}
     }
     return NOTMUCH_STATUS_SUCCESS;
 }
 
 const char *
-notmuch_config_get (notmuch_database_t *notmuch, notmuch_config_key_t key) {
+notmuch_config_get (notmuch_database_t *notmuch, notmuch_config_key_t key)
+{
 
     return _notmuch_string_map_get (notmuch->config, _notmuch_config_key_to_string (key));
 }
 
+const char *
+notmuch_config_path (notmuch_database_t *notmuch)
+{
+    return notmuch->config_path;
+}
+
 notmuch_status_t
-notmuch_config_set (notmuch_database_t *notmuch, notmuch_config_key_t key, const char *val) {
+notmuch_config_set (notmuch_database_t *notmuch, notmuch_config_key_t key, const char *val)
+{
 
     return notmuch_database_set_config (notmuch, _notmuch_config_key_to_string (key), val);
 }
 
 void
-_notmuch_config_cache (notmuch_database_t *notmuch, notmuch_config_key_t key, const char *val) {
+_notmuch_config_cache (notmuch_database_t *notmuch, notmuch_config_key_t key, const char *val)
+{
+    if (notmuch->config == NULL)
+	notmuch->config = _notmuch_string_map_create (notmuch);
+
     _notmuch_string_map_set (notmuch->config, _notmuch_config_key_to_string (key), val);
 }

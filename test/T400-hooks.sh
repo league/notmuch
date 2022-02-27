@@ -2,12 +2,27 @@
 test_description='hooks'
 . $(dirname "$0")/test-lib.sh || exit 1
 
+test_require_external_prereq xapian-delve
+
 create_echo_hook () {
     local TOKEN="${RANDOM}"
     mkdir -p ${HOOK_DIR}
     cat <<EOF >"${HOOK_DIR}/${1}"
 #!/bin/sh
 echo "${TOKEN}" > ${3}
+EOF
+    chmod +x "${HOOK_DIR}/${1}"
+    echo "${TOKEN}" > ${2}
+}
+
+create_write_hook () {
+    local TOKEN="${RANDOM}"
+    mkdir -p ${HOOK_DIR}
+    cat <<EOF >"${HOOK_DIR}/${1}"
+#!/bin/sh
+if xapian-delve ${MAIL_DIR}/.notmuch/xapian | grep -q "writing = false"; then
+   echo "${TOKEN}" > ${3}
+fi
 EOF
     chmod +x "${HOOK_DIR}/${1}"
     echo "${TOKEN}" > ${2}
@@ -28,9 +43,10 @@ add_message
 # create maildir structure for notmuch-insert
 mkdir -p "$MAIL_DIR"/{cur,new,tmp}
 
-for config in traditional profile explicit XDG; do
+for config in traditional profile explicit XDG split; do
     unset NOTMUCH_PROFILE
     notmuch config set database.hook_dir
+    notmuch config set database.path ${MAIL_DIR}
     case $config in
 	traditional)
 	    HOOK_DIR=${MAIL_DIR}/.notmuch/hooks
@@ -49,6 +65,12 @@ for config in traditional profile explicit XDG; do
 	    ;;
 	XDG)
 	    HOOK_DIR=${HOME}/.config/notmuch/default/hooks
+	    ;;
+	split)
+	    dir="$TMP_DIRECTORY/database.$test_count"
+	    notmuch config set database.path $dir
+	    notmuch config set database.mail_root $MAIL_DIR
+	    HOOK_DIR=${dir}/hooks
 	    ;;
     esac
 
@@ -136,6 +158,18 @@ EOF
 EOF
     chmod +x "${HOOK_DIR}/pre-new"
     test_expect_code 1 "notmuch new"
+
+    test_begin_subtest "post-new with write access [${config}]"
+    rm -rf ${HOOK_DIR}
+    create_write_hook "post-new" write.expected write.output $HOOK_DIR
+    NOTMUCH_NEW
+    test_expect_equal_file write.expected write.output
+
+    test_begin_subtest "pre-new with write access [${config}]"
+    rm -rf ${HOOK_DIR}
+    create_write_hook "pre-new" write.expected write.output $HOOK_DIR
+    NOTMUCH_NEW
+    test_expect_equal_file write.expected write.output
 
     rm -rf ${HOOK_DIR}
 done

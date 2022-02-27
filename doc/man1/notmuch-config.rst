@@ -7,7 +7,7 @@ SYNOPSIS
 
 **notmuch** **config** **get** <*section*>.<*item*>
 
-**notmuch** **config** **set** <*section*>.<*item*> [*value* ...]
+**notmuch** **config** **set** [--database] <*section*>.<*item*> [*value* ...]
 
 **notmuch** **config** **list**
 
@@ -30,6 +30,10 @@ configuration file and corresponding database.
     If no values are provided, the specified configuration item will
     be removed from the configuration file.
 
+    With the `--database` option, updates configuration metadata
+    stored in the database, rather than the default (text)
+    configuration file.
+
 **list**
     Every configuration item is printed to stdout, each on a separate
     line of the form::
@@ -43,12 +47,21 @@ configuration file and corresponding database.
 The available configuration items are described below.
 
 **database.path**
-    The top-level directory where your mail currently exists and to
-    where mail will be delivered in the future. Files should be
-    individual email messages. Notmuch will store its database within
-    a sub-directory of the path configured here named ``.notmuch``.
+    Notmuch will store its database here, (in
+    sub-directory named ``.notmuch`` if **database.mail\_root**
+    is unset).
 
     Default: ``$MAILDIR`` variable if set, otherwise ``$HOME/mail``.
+
+**database.mail_root**
+    The top-level directory where your mail currently exists and to
+    where mail will be delivered in the future. Files should be
+    individual email messages.
+
+    History: this configuration value was introduced in notmuch 0.32.
+
+    Default: For compatibility with older configurations, the value of
+    database.path is used if **database.mail\_root** is unset.
 
 **database.hook_dir**
 

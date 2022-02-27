@@ -189,7 +189,11 @@ operator& (notmuch_field_flag_t a, notmuch_field_flag_t b)
 struct _notmuch_database {
     bool exception_reported;
 
-    char *path;
+    /* Path to actual database */
+    const char *xapian_path;
+
+    /* Path to config loaded, if any */
+    const char *config_path;
 
     int atomic_nesting;
     /* true if changes have been made in this atomic section */

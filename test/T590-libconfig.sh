@@ -27,7 +27,7 @@ int main (int argc, char** argv)
                                               &db,
                                               &msg);
    if (stat != NOTMUCH_STATUS_SUCCESS) {
-     fprintf (stderr, "error opening database: %d %s\n", stat, msg ? msg : "");
+     fprintf (stderr, "error opening database\n%s\n%s\n", notmuch_status_to_string (stat), msg ? msg : "");
      exit (1);
    }
 EOF
@@ -255,6 +255,29 @@ EOF
 test_expect_equal_file EXPECTED OUTPUT
 restore_database
 
+test_begin_subtest "notmuch_config_get_values_string"
+cat c_head - c_tail <<'EOF' | test_C ${MAIL_DIR} ${NOTMUCH_CONFIG} %NULL%
+{
+    notmuch_config_values_t *values;
+    EXPECT0(notmuch_database_set_config (db, "test.list", "x;y;z"));
+    for (values = notmuch_config_get_values_string (db, "test.list");
+	 notmuch_config_values_valid (values);
+	 notmuch_config_values_move_to_next (values))
+    {
+	  puts (notmuch_config_values_get (values));
+    }
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+x
+y
+z
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+restore_database
+
 test_begin_subtest "notmuch_config_get_values (restart)"
 cat c_head - c_tail <<'EOF' | test_C ${MAIL_DIR} ${NOTMUCH_CONFIG} %NULL%
 {
@@ -361,21 +384,26 @@ cat c_head - c_tail <<'EOF' | test_C ${MAIL_DIR} '' %NULL%
     }
 }
 EOF
+
+notmuch_passwd_sanitize < OUTPUT > OUTPUT.clean
+
 cat <<'EOF' >EXPECTED
 == stdout ==
 MAIL_DIR
+MAIL_DIR
 MAIL_DIR/.notmuch/hooks
+MAIL_DIR/.notmuch/backups
 
-inbox;unread
-NULL
+unread;inbox
+
 true
+USERNAME@FQDN
 NULL
-NULL
-NULL
+USER_FULL_NAME
 == stderr ==
 EOF
 unset MAILDIR
-test_expect_equal_file EXPECTED OUTPUT
+test_expect_equal_file EXPECTED OUTPUT.clean
 
 backup_database
 test_begin_subtest "override config from \${NOTMUCH_CONFIG}"
@@ -504,5 +532,299 @@ test.key2 = testvalue2
 EOF
 test_expect_equal_file EXPECTED OUTPUT
 restore_database
+
+test_begin_subtest "no config, fail to open database"
+old_NOTMUCH_CONFIG=${NOTMUCH_CONFIG}
+unset NOTMUCH_CONFIG
+cat c_head - c_tail <<'EOF' | test_C %NULL% '' %NULL%
+{
+   printf("NOT RUN");
+}
+EOF
+NOTMUCH_CONFIG=${old_NOTMUCH_CONFIG}
+cat <<'EOF' >EXPECTED
+== stdout ==
+== stderr ==
+error opening database
+Something went wrong trying to read or write a file
+Error: Cannot open database at CWD/home/.local/share/notmuch/default: No such file or directory.
+
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "open database from NOTMUCH_DATABASE"
+old_NOTMUCH_CONFIG=${NOTMUCH_CONFIG}
+unset NOTMUCH_CONFIG
+export NOTMUCH_DATABASE=${MAIL_DIR}
+cat c_head - c_tail <<'EOF' | test_C %NULL% '' %NULL%
+{
+   EXPECT0(notmuch_database_get_config (db, "test.key1", &val));
+   printf("test.key1 = %s\n", val);
+   EXPECT0(notmuch_database_get_config (db, "test.key2", &val));
+   printf("test.key2 = %s\n", val);
+}
+EOF
+export NOTMUCH_CONFIG=${old_NOTMUCH_CONFIG}
+unset NOTMUCH_DATABASE
+cat <<'EOF' >EXPECTED
+== stdout ==
+test.key1 = testvalue1
+test.key2 = testvalue2
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "NOTMUCH_DATABASE overrides config"
+cp notmuch-config notmuch-config.bak
+notmuch config set database.path /nonexistent
+export NOTMUCH_DATABASE=${MAIL_DIR}
+cat c_head - c_tail <<'EOF' | test_C %NULL% '' %NULL%
+{
+   EXPECT0(notmuch_database_get_config (db, "test.key1", &val));
+   printf("test.key1 = %s\n", val);
+   EXPECT0(notmuch_database_get_config (db, "test.key2", &val));
+   printf("test.key2 = %s\n", val);
+}
+EOF
+NOTMUCH_CONFIG=${old_NOTMUCH_CONFIG}
+unset NOTMUCH_DATABASE
+cat <<'EOF' >EXPECTED
+== stdout ==
+test.key1 = testvalue1
+test.key2 = testvalue2
+== stderr ==
+EOF
+cp notmuch-config.bak notmuch-config
+test_expect_equal_file EXPECTED OUTPUT
+
+cat <<EOF > c_head2
+#include <string.h>
+#include <stdlib.h>
+#include <notmuch-test.h>
+
+int main (int argc, char** argv)
+{
+   notmuch_database_t *db;
+   char *val;
+   notmuch_status_t stat;
+   char *msg = NULL;
+
+   for (int i = 1; i < argc; i++)
+      if (strcmp (argv[i], "%NULL%") == 0) argv[i] = NULL;
+
+   stat = notmuch_database_load_config (argv[1],
+                                        argv[2],
+                                        argv[3],
+                                        &db,
+                                        &msg);
+   if (stat != NOTMUCH_STATUS_SUCCESS  && stat != NOTMUCH_STATUS_NO_CONFIG) {
+     fprintf (stderr, "error opening database\n%d: %s\n%s\n", stat,
+	      notmuch_status_to_string (stat), msg ? msg : "");
+     exit (1);
+   }
+EOF
+
+
+test_begin_subtest "notmuch_database_get_config (ndlc)"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} %NULL% %NULL%
+{
+   EXPECT0(notmuch_database_get_config (db, "test.key1", &val));
+   printf("test.key1 = %s\n", val);
+   EXPECT0(notmuch_database_get_config (db, "test.key2", &val));
+   printf("test.key2 = %s\n", val);
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+test.key1 = testvalue1
+test.key2 = testvalue2
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+
+test_begin_subtest "notmuch_database_get_config_list: all pairs (ndlc)"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} ${NOTMUCH_CONFIG} %NULL%
+{
+   notmuch_config_list_t *list;
+   EXPECT0(notmuch_database_get_config_list (db, "", &list));
+   for (; notmuch_config_list_valid (list); notmuch_config_list_move_to_next (list)) {
+      printf("%s %s\n", notmuch_config_list_key (list), notmuch_config_list_value(list));
+   }
+   notmuch_config_list_destroy (list);
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+aaabefore beforeval
+key with spaces value, with, spaces!
+test.key1 testvalue1
+test.key2 testvalue2
+zzzafter afterval
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "notmuch_database_get_config_list: one prefix (ndlc)"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} ${NOTMUCH_CONFIG} %NULL%
+{
+   notmuch_config_list_t *list;
+   EXPECT0(notmuch_database_get_config_list (db, "test.key", &list));
+   for (; notmuch_config_list_valid (list); notmuch_config_list_move_to_next (list)) {
+      printf("%s %s\n", notmuch_config_list_key (list), notmuch_config_list_value(list));
+   }
+   notmuch_config_list_destroy (list);
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+test.key1 testvalue1
+test.key2 testvalue2
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "list by keys (ndlc)"
+notmuch config set search.exclude_tags "foo;bar;fub"
+notmuch config set new.ignore "sekrit_junk"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} %NULL% %NULL%
+{
+    notmuch_config_key_t key;
+    for (key = NOTMUCH_CONFIG_FIRST;
+	 key < NOTMUCH_CONFIG_LAST;
+	 key = (notmuch_config_key_t)(key + 1)) {
+	const char *val = notmuch_config_get (db, key);
+        printf("%s\n", val ? val : "NULL" );
+    }
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+MAIL_DIR
+MAIL_DIR
+MAIL_DIR/.notmuch/hooks
+MAIL_DIR/.notmuch/backups
+foo;bar;fub
+unread;inbox
+sekrit_junk
+true
+test_suite@notmuchmail.org
+test_suite_other@notmuchmail.org;test_suite@otherdomain.org
+Notmuch Test Suite
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "load default values (ndlc, nonexistent config)"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} /nonexistent %NULL%
+{
+    notmuch_config_key_t key;
+    for (key = NOTMUCH_CONFIG_FIRST;
+	 key < NOTMUCH_CONFIG_LAST;
+	 key = (notmuch_config_key_t)(key + 1)) {
+	const char *val = notmuch_config_get (db, key);
+	printf("%s\n", val ? val : "NULL" );
+    }
+}
+EOF
+
+notmuch_passwd_sanitize < OUTPUT > OUTPUT.clean
+cat <<'EOF' >EXPECTED
+== stdout ==
+MAIL_DIR
+MAIL_DIR
+MAIL_DIR/.notmuch/hooks
+MAIL_DIR/.notmuch/backups
+
+unread;inbox
+
+true
+USERNAME@FQDN
+NULL
+USER_FULL_NAME
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT.clean
+
+backup_database
+test_begin_subtest "override config from \${HOME}/.notmuch-config (ndlc)"
+ovconfig=${HOME}/.notmuch-config
+cp ${NOTMUCH_CONFIG} ${ovconfig}
+old_NOTMUCH_CONFIG=${NOTMUCH_CONFIG}
+unset NOTMUCH_CONFIG
+notmuch --config=${ovconfig} config set test.key1 overridden-home
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} %NULL% %NULL%
+{
+   EXPECT0(notmuch_database_get_config (db, "test.key1", &val));
+   printf("test.key1 = %s\n", val);
+   EXPECT0(notmuch_database_get_config (db, "test.key2", &val));
+   printf("test.key2 = %s\n", val);
+}
+EOF
+rm -f ${ovconfig}
+NOTMUCH_CONFIG=${old_NOTMUCH_CONFIG}
+cat <<'EOF' >EXPECTED
+== stdout ==
+test.key1 = overridden-home
+test.key2 = testvalue2
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+restore_database
+
+test_begin_subtest "notmuch_config_get_pairs: prefix (ndlc)"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} ${NOTMUCH_CONFIG} %NULL%
+{
+   notmuch_config_pairs_t *list;
+   for (list =  notmuch_config_get_pairs (db, "user.");
+        notmuch_config_pairs_valid (list);
+        notmuch_config_pairs_move_to_next (list)) {
+     printf("%s %s\n", notmuch_config_pairs_key (list), notmuch_config_pairs_value(list));
+   }
+   notmuch_config_pairs_destroy (list);
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+user.name Notmuch Test Suite
+user.other_email test_suite_other@notmuchmail.org;test_suite@otherdomain.org
+user.primary_email test_suite@notmuchmail.org
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "notmuch_config_get_pairs: all pairs (ndlc)"
+cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} ${NOTMUCH_CONFIG} %NULL%
+{
+   notmuch_config_pairs_t *list;
+   for (list =  notmuch_config_get_pairs (db, "");
+        notmuch_config_pairs_valid (list);
+        notmuch_config_pairs_move_to_next (list)) {
+     printf("%s %s\n", notmuch_config_pairs_key (list), notmuch_config_pairs_value(list));
+   }
+   notmuch_config_pairs_destroy (list);
+}
+EOF
+cat <<'EOF' >EXPECTED
+== stdout ==
+aaabefore beforeval
+database.backup_dir MAIL_DIR/.notmuch/backups
+database.hook_dir MAIL_DIR/.notmuch/hooks
+database.mail_root MAIL_DIR
+database.path MAIL_DIR
+key with spaces value, with, spaces!
+maildir.synchronize_flags true
+new.ignore sekrit_junk
+new.tags unread;inbox
+search.exclude_tags foo;bar;fub
+test.key1 testvalue1
+test.key2 testvalue2
+user.name Notmuch Test Suite
+user.other_email test_suite_other@notmuchmail.org;test_suite@otherdomain.org
+user.primary_email test_suite@notmuchmail.org
+zzzafter afterval
+== stderr ==
+EOF
+test_expect_equal_file EXPECTED OUTPUT
 
 test_done

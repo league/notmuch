@@ -49,7 +49,8 @@ typedef struct {
 #define LOG_XAPIAN_EXCEPTION(message, error) _log_xapian_exception (__location__, message, error)
 
 static void
-_log_xapian_exception (const char *where, notmuch_database_t *notmuch,  const Xapian::Error error) {
+_log_xapian_exception (const char *where, notmuch_database_t *notmuch,  const Xapian::Error error)
+{
     _notmuch_database_log (notmuch,
 			   "A Xapian exception occurred at %s: %s\n",
 			   where,
@@ -292,12 +293,22 @@ notmuch_status_to_string (notmuch_status_t status)
 	return "Operation requires a database upgrade";
     case NOTMUCH_STATUS_PATH_ERROR:
 	return "Path supplied is illegal for this function";
+    case NOTMUCH_STATUS_IGNORED:
+	return "Argument was ignored";
+    case NOTMUCH_STATUS_ILLEGAL_ARGUMENT:
+	return "Illegal argument for function";
     case NOTMUCH_STATUS_MALFORMED_CRYPTO_PROTOCOL:
 	return "Crypto protocol missing, malformed, or unintelligible";
     case NOTMUCH_STATUS_FAILED_CRYPTO_CONTEXT_CREATION:
 	return "Crypto engine initialization failure";
     case NOTMUCH_STATUS_UNKNOWN_CRYPTO_PROTOCOL:
 	return "Unknown crypto protocol";
+    case NOTMUCH_STATUS_NO_CONFIG:
+	return "No configuration file found";
+    case NOTMUCH_STATUS_NO_DATABASE:
+	return "No database found";
+    case NOTMUCH_STATUS_DATABASE_EXISTS:
+	return "Database exists, not recreated";
     default:
     case NOTMUCH_STATUS_LAST_STATUS:
 	return "Unknown error status value";
@@ -506,35 +517,14 @@ notmuch_database_close (notmuch_database_t *notmuch)
 	} catch (const Xapian::Error &error) {
 	    status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
 	    if (! notmuch->exception_reported) {
-		_notmuch_database_log (notmuch, "Error: A Xapian exception occurred closing database: %s\n",
+		_notmuch_database_log (notmuch,
+				       "Error: A Xapian exception occurred closing database: %s\n",
 				       error.get_msg ().c_str ());
 	    }
 	}
     }
     notmuch->open = false;
     return status;
-}
-
-notmuch_status_t
-_notmuch_database_reopen (notmuch_database_t *notmuch)
-{
-    if (_notmuch_database_mode (notmuch) != NOTMUCH_DATABASE_MODE_READ_ONLY)
-	return NOTMUCH_STATUS_UNSUPPORTED_OPERATION;
-
-    try {
-	notmuch->xapian_db->reopen ();
-    } catch (const Xapian::Error &error) {
-	if (! notmuch->exception_reported) {
-	    _notmuch_database_log (notmuch, "Error: A Xapian exception reopening database: %s\n",
-				   error.get_msg ().c_str ());
-	    notmuch->exception_reported = true;
-	}
-	return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
-    }
-
-    notmuch->view++;
-
-    return NOTMUCH_STATUS_SUCCESS;
 }
 
 static int
@@ -627,13 +617,15 @@ notmuch_status_t
 notmuch_database_compact_db (notmuch_database_t *notmuch,
 			     const char *backup_path,
 			     notmuch_compact_status_cb_t status_cb,
-			     void *closure) {
+			     void *closure)
+{
     void *local;
-    char *notmuch_path, *xapian_path, *compact_xapian_path;
-    const char* path;
+    const char *xapian_path, *compact_xapian_path;
+    const char *path;
     notmuch_status_t ret = NOTMUCH_STATUS_SUCCESS;
     struct stat statbuf;
     bool keep_backup;
+    char *message;
 
     ret = _notmuch_database_ensure_writable (notmuch);
     if (ret)
@@ -647,15 +639,9 @@ notmuch_database_compact_db (notmuch_database_t *notmuch,
     if (! local)
 	return NOTMUCH_STATUS_OUT_OF_MEMORY;
 
-    if (! (notmuch_path = talloc_asprintf (local, "%s/%s", path, ".notmuch"))) {
-	ret = NOTMUCH_STATUS_OUT_OF_MEMORY;
+    ret = _notmuch_choose_xapian_path (local, path, &xapian_path, &message);
+    if (ret)
 	goto DONE;
-    }
-
-    if (! (xapian_path = talloc_asprintf (local, "%s/%s", notmuch_path, "xapian"))) {
-	ret = NOTMUCH_STATUS_OUT_OF_MEMORY;
-	goto DONE;
-    }
 
     if (! (compact_xapian_path = talloc_asprintf (local, "%s.compact", xapian_path))) {
 	ret = NOTMUCH_STATUS_OUT_OF_MEMORY;
@@ -692,7 +678,8 @@ notmuch_database_compact_db (notmuch_database_t *notmuch,
 
     try {
 	NotmuchCompactor compactor (status_cb, closure);
-	notmuch->xapian_db->compact (compact_xapian_path, Xapian::DBCOMPACT_NO_RENUMBER, 0, compactor);
+	notmuch->xapian_db->compact (compact_xapian_path, Xapian::DBCOMPACT_NO_RENUMBER, 0,
+				     compactor);
     } catch (const Xapian::Error &error) {
 	_notmuch_database_log (notmuch, "Error while compacting: %s\n", error.get_msg ().c_str ());
 	ret = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
@@ -770,7 +757,7 @@ notmuch_database_destroy (notmuch_database_t *notmuch)
 const char *
 notmuch_database_get_path (notmuch_database_t *notmuch)
 {
-    return notmuch->path;
+    return notmuch_config_get (notmuch, NOTMUCH_CONFIG_DATABASE_PATH);
 }
 
 unsigned int
@@ -840,8 +827,8 @@ handle_sigalrm (unused (int signal))
  */
 notmuch_status_t
 notmuch_database_upgrade (notmuch_database_t *notmuch,
-			  void (*progress_notify) (void *closure,
-						   double progress),
+			  void (*progress_notify)(void *closure,
+						  double progress),
 			  void *closure)
 {
     void *local = talloc_new (NULL);
@@ -1065,7 +1052,8 @@ notmuch_database_upgrade (notmuch_database_t *notmuch,
 	    if (private_status) {
 		_notmuch_database_log (notmuch,
 				       "Upgrade failed while creating ghost messages.\n");
-		status = COERCE_STATUS (private_status, "Unexpected status from _notmuch_message_initialize_ghost");
+		status = COERCE_STATUS (private_status,
+					"Unexpected status from _notmuch_message_initialize_ghost");
 		goto DONE;
 	    }
 
@@ -1367,7 +1355,7 @@ _notmuch_database_relative_path (notmuch_database_t *notmuch,
     const char *db_path, *relative;
     unsigned int db_path_len;
 
-    db_path = notmuch_database_get_path (notmuch);
+    db_path = notmuch_config_get (notmuch, NOTMUCH_CONFIG_MAIL_ROOT);
     db_path_len = strlen (db_path);
 
     relative = path;
@@ -1498,7 +1486,8 @@ notmuch_database_find_message_by_filename (notmuch_database_t *notmuch,
 		status = NOTMUCH_STATUS_OUT_OF_MEMORY;
 	}
     } catch (const Xapian::Error &error) {
-	_notmuch_database_log (notmuch, "Error: A Xapian exception occurred finding message by filename: %s\n",
+	_notmuch_database_log (notmuch,
+			       "Error: A Xapian exception occurred finding message by filename: %s\n",
 			       error.get_msg ().c_str ());
 	notmuch->exception_reported = true;
 	status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;

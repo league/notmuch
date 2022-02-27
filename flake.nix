@@ -51,6 +51,7 @@
         in pkgs.mkShell {
           inherit (self.checks.${system}.pre-commit) shellHook;
           buildInputs = pkg-inputs ++ check-tools;
+          NOTMUCH_SKIP_TESTS = "libconfig.18 libconfig.31";
         });
     };
 }

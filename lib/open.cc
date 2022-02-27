@@ -1,6 +1,9 @@
 #include <unistd.h>
+#include <libgen.h>
+
 #include "database-private.h"
 #include "parse-time-vrp.h"
+#include "path-util.h"
 
 #if HAVE_XAPIAN_DB_RETRY_LOCK
 #define DB_ACTION (Xapian::DB_CREATE_OR_OPEN | Xapian::DB_RETRY_LOCK)
@@ -69,50 +72,54 @@ _xdg_dir (void *ctx,
 }
 
 static notmuch_status_t
-_choose_hook_dir (notmuch_database_t *notmuch,
-		  const char *profile,
-		  char **message)
+_choose_dir (notmuch_database_t *notmuch,
+	     const char *profile,
+	     notmuch_config_key_t key,
+	     const char *xdg_var,
+	     const char *xdg_subdir,
+	     const char *subdir,
+	     char **message = NULL)
 {
-    const char *config;
-    const char *hook_dir;
+    const char *parent;
+    const char *dir;
     struct stat st;
     int err;
 
-    hook_dir = notmuch_config_get (notmuch, NOTMUCH_CONFIG_HOOK_DIR);
+    dir = notmuch_config_get (notmuch, key);
 
-    if (hook_dir)
+    if (dir)
 	return NOTMUCH_STATUS_SUCCESS;
 
-    config = _xdg_dir (notmuch, "XDG_CONFIG_HOME", ".config", profile);
-    if (! config)
-	return  NOTMUCH_STATUS_PATH_ERROR;
+    parent = _xdg_dir (notmuch, xdg_var, xdg_subdir, profile);
+    if (! parent)
+	return NOTMUCH_STATUS_PATH_ERROR;
 
-    hook_dir = talloc_asprintf (notmuch, "%s/hooks", config);
+    dir = talloc_asprintf (notmuch, "%s/%s", parent, subdir);
 
-    err = stat (hook_dir, &st);
+    err = stat (dir, &st);
     if (err) {
 	if (errno == ENOENT) {
-	    const char *database_path = notmuch_database_get_path (notmuch);
-	    hook_dir = talloc_asprintf (notmuch, "%s/.notmuch/hooks", database_path);
+	    char *notmuch_path = dirname (talloc_strdup (notmuch, notmuch->xapian_path));
+	    dir = talloc_asprintf (notmuch, "%s/%s", notmuch_path, subdir);
 	} else {
 	    IGNORE_RESULT (asprintf (message, "Error: Cannot stat %s: %s.\n",
-				     hook_dir, strerror (errno)));
+				     dir, strerror (errno)));
 	    return NOTMUCH_STATUS_FILE_ERROR;
 	}
     }
 
-    _notmuch_config_cache (notmuch, NOTMUCH_CONFIG_HOOK_DIR, hook_dir);
+    _notmuch_config_cache (notmuch, key, dir);
 
     return NOTMUCH_STATUS_SUCCESS;
 }
 
 static notmuch_status_t
-_load_key_file (const char *path,
+_load_key_file (notmuch_database_t *notmuch,
+		const char *path,
 		const char *profile,
 		GKeyFile **key_file)
 {
     notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
-    void *local = talloc_new (NULL);
 
     if (path && EMPTY_STRING (path))
 	goto DONE;
@@ -120,12 +127,14 @@ _load_key_file (const char *path,
     if (! path)
 	path = getenv ("NOTMUCH_CONFIG");
 
-    if (! path) {
-	const char *dir = _xdg_dir (local, "XDG_CONFIG_HOME", ".config", profile);
+    if (path)
+	path = talloc_strdup (notmuch, path);
+    else {
+	const char *dir = _xdg_dir (notmuch, "XDG_CONFIG_HOME", ".config", profile);
 
 	if (dir) {
-	    path = talloc_asprintf (local, "%s/config", dir);
-	    if (access (path, R_OK) !=0)
+	    path = talloc_asprintf (notmuch, "%s/config", dir);
+	    if (access (path, R_OK) != 0)
 		path = NULL;
 	}
     }
@@ -133,13 +142,13 @@ _load_key_file (const char *path,
     if (! path) {
 	const char *home = getenv ("HOME");
 
-	path = talloc_asprintf (local, "%s/.notmuch-config", home);
+	path = talloc_asprintf (notmuch, "%s/.notmuch-config", home);
 
 	if (! profile)
 	    profile = getenv ("NOTMUCH_PROFILE");
 
 	if (profile)
-	    path = talloc_asprintf (local, "%s.%s", path, profile);
+	    path = talloc_asprintf (notmuch, "%s.%s", path, profile);
     }
 
     *key_file = g_key_file_new ();
@@ -147,32 +156,66 @@ _load_key_file (const char *path,
 	status = NOTMUCH_STATUS_NO_CONFIG;
     }
 
-DONE:
-    talloc_free (local);
+  DONE:
+    if (path)
+	notmuch->config_path = path;
+
     return status;
 }
 
 static notmuch_status_t
-_choose_database_path (const char *config_path,
-		       const char *profile,
-		       GKeyFile **key_file,
-		       const char **database_path,
-		       char **message)
+_db_dir_exists (const char *database_path, char **message)
 {
-    notmuch_status_t status;
+    struct stat st;
+    int err;
 
-    status =_load_key_file (config_path, profile, key_file);
-    if (status) {
-	*message = strdup ("Error: cannot load config file.\n");
-	return status;
+    err = stat (database_path, &st);
+    if (err) {
+	IGNORE_RESULT (asprintf (message, "Error: Cannot open database at %s: %s.\n",
+				 database_path, strerror (errno)));
+	return NOTMUCH_STATUS_FILE_ERROR;
     }
 
-    if (! *database_path && *key_file)
-	*database_path = g_key_file_get_value (*key_file, "database", "path", NULL);
+    if (! S_ISDIR (st.st_mode)) {
+	IGNORE_RESULT (asprintf (message, "Error: Cannot open database at %s: "
+				 "Not a directory.\n",
+				 database_path));
+	return NOTMUCH_STATUS_FILE_ERROR;
+    }
+
+    return NOTMUCH_STATUS_SUCCESS;
+}
+
+static notmuch_status_t
+_choose_database_path (void *ctx,
+		       const char *profile,
+		       GKeyFile *key_file,
+		       const char **database_path,
+		       bool *split,
+		       char **message)
+{
+    if (! *database_path) {
+	*database_path = getenv ("NOTMUCH_DATABASE");
+    }
+
+    if (! *database_path && key_file) {
+	char *path = g_key_file_get_value (key_file, "database", "path", NULL);
+	if (path) {
+	    if (path[0] == '/')
+		*database_path = talloc_strdup (ctx, path);
+	    else
+		*database_path = talloc_asprintf (ctx, "%s/%s", getenv ("HOME"), path);
+	    g_free (path);
+	}
+    }
+    if (! *database_path) {
+	*database_path = _xdg_dir (ctx, "XDG_DATA_HOME", ".local/share", profile);
+	*split = true;
+    }
 
     if (*database_path == NULL) {
-	*message = strdup ("Error: Cannot open a database for a NULL path.\n");
-	return NOTMUCH_STATUS_NULL_POINTER;
+	*message = strdup ("Error: could not locate database.\n");
+	return NOTMUCH_STATUS_NO_DATABASE;
     }
 
     if (*database_path[0] != '/') {
@@ -182,47 +225,93 @@ _choose_database_path (const char *config_path,
     return NOTMUCH_STATUS_SUCCESS;
 }
 
-notmuch_status_t
-notmuch_database_open_with_config (const char *database_path,
-				   notmuch_database_mode_t mode,
-				   const char *config_path,
-				   const char *profile,
-				   notmuch_database_t **database,
-				   char **status_string)
+notmuch_database_t *
+_alloc_notmuch ()
 {
-    notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
-    void *local = talloc_new (NULL);
-    notmuch_database_t *notmuch = NULL;
-    char *notmuch_path, *xapian_path, *incompat_features;
-    char *message = NULL;
-    struct stat st;
-    int err;
-    unsigned int version;
-    GKeyFile *key_file = NULL;
+    notmuch_database_t *notmuch;
+
+    notmuch = talloc_zero (NULL, notmuch_database_t);
+    if (! notmuch)
+	return NULL;
+
+    notmuch->exception_reported = false;
+    notmuch->status_string = NULL;
+    notmuch->writable_xapian_db = NULL;
+    notmuch->config_path = NULL;
+    notmuch->atomic_nesting = 0;
+    notmuch->view = 1;
+    return notmuch;
+}
+
+static notmuch_status_t
+_trial_open (const char *xapian_path, char **message_ptr)
+{
+    try {
+	Xapian::Database db (xapian_path);
+    } catch (const Xapian::DatabaseOpeningError &error) {
+	IGNORE_RESULT (asprintf (message_ptr,
+				 "Cannot open Xapian database at %s: %s\n",
+				 xapian_path,
+				 error.get_msg ().c_str ()));
+	return NOTMUCH_STATUS_PATH_ERROR;
+    } catch (const Xapian::Error &error) {
+	IGNORE_RESULT (asprintf (message_ptr,
+				 "A Xapian exception occurred opening database: %s\n",
+				 error.get_msg ().c_str ()));
+	return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
+    }
+    return NOTMUCH_STATUS_SUCCESS;
+}
+
+notmuch_status_t
+_notmuch_choose_xapian_path (void *ctx, const char *database_path,
+			     const char **xapian_path, char **message_ptr)
+{
+    notmuch_status_t status;
+    const char *trial_path, *notmuch_path;
+
+    status = _db_dir_exists (database_path, message_ptr);
+    if (status)
+	goto DONE;
+
+    trial_path = talloc_asprintf (ctx, "%s/xapian", database_path);
+    status = _trial_open (trial_path, message_ptr);
+    if (status != NOTMUCH_STATUS_PATH_ERROR)
+	goto DONE;
+
+    if (*message_ptr)
+	free (*message_ptr);
+
+    notmuch_path = talloc_asprintf (ctx, "%s/.notmuch", database_path);
+    status = _db_dir_exists (notmuch_path, message_ptr);
+    if (status)
+	goto DONE;
+
+    trial_path = talloc_asprintf (ctx, "%s/xapian", notmuch_path);
+    status = _trial_open (trial_path, message_ptr);
+
+  DONE:
+    if (status == NOTMUCH_STATUS_SUCCESS)
+	*xapian_path = trial_path;
+    return status;
+}
+
+static void
+_set_database_path (notmuch_database_t *notmuch,
+		    const char *database_path)
+{
+    char *path = talloc_strdup (notmuch, database_path);
+
+    strip_trailing (path, '/');
+
+    _notmuch_config_cache (notmuch, NOTMUCH_CONFIG_DATABASE_PATH, path);
+}
+
+static void
+_init_libs ()
+{
+
     static int initialized = 0;
-
-    if ((status = _choose_database_path (config_path, profile, &key_file, &database_path, &message)))
-	goto DONE;
-
-    if (! (notmuch_path = talloc_asprintf (local, "%s/%s", database_path, ".notmuch"))) {
-	message = strdup ("Out of memory\n");
-	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
-	goto DONE;
-    }
-
-    err = stat (notmuch_path, &st);
-    if (err) {
-	IGNORE_RESULT (asprintf (&message, "Error opening database at %s: %s\n",
-				 notmuch_path, strerror (errno)));
-	status = NOTMUCH_STATUS_FILE_ERROR;
-	goto DONE;
-    }
-
-    if (! (xapian_path = talloc_asprintf (local, "%s/%s", notmuch_path, "xapian"))) {
-	message = strdup ("Out of memory\n");
-	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
-	goto DONE;
-    }
 
     /* Initialize the GLib type system and threads */
 #if ! GLIB_CHECK_VERSION (2, 35, 1)
@@ -234,27 +323,31 @@ notmuch_database_open_with_config (const char *database_path,
 	g_mime_init ();
 	initialized = 1;
     }
+}
 
-    notmuch = talloc_zero (NULL, notmuch_database_t);
-    notmuch->exception_reported = false;
-    notmuch->status_string = NULL;
-    notmuch->path = talloc_strdup (notmuch, database_path);
+static notmuch_status_t
+_finish_open (notmuch_database_t *notmuch,
+	      const char *profile,
+	      notmuch_database_mode_t mode,
+	      GKeyFile *key_file,
+	      char **message_ptr)
+{
+    notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
+    char *incompat_features;
+    char *message = NULL;
+    unsigned int version;
+    const char *database_path = notmuch_database_get_path (notmuch);
 
-    strip_trailing (notmuch->path, '/');
-
-    notmuch->writable_xapian_db = NULL;
-    notmuch->atomic_nesting = 0;
-    notmuch->view = 1;
     try {
 	std::string last_thread_id;
 	std::string last_mod;
 
 	if (mode == NOTMUCH_DATABASE_MODE_READ_WRITE) {
-	    notmuch->writable_xapian_db = new Xapian::WritableDatabase (xapian_path,
+	    notmuch->writable_xapian_db = new Xapian::WritableDatabase (notmuch->xapian_path,
 									DB_ACTION);
 	    notmuch->xapian_db = notmuch->writable_xapian_db;
 	} else {
-	    notmuch->xapian_db = new Xapian::Database (xapian_path);
+	    notmuch->xapian_db = new Xapian::Database (notmuch->xapian_path);
 	}
 
 	/* Check version.  As of database version 3, we represent
@@ -266,7 +359,7 @@ notmuch_database_open_with_config (const char *database_path,
 				     "Error: Notmuch database at %s\n"
 				     "       has a newer database format version (%u) than supported by this\n"
 				     "       version of notmuch (%u).\n",
-				     notmuch_path, version, NOTMUCH_DATABASE_VERSION));
+				     database_path, version, NOTMUCH_DATABASE_VERSION));
 	    notmuch_database_destroy (notmuch);
 	    notmuch = NULL;
 	    status = NOTMUCH_STATUS_FILE_ERROR;
@@ -276,7 +369,7 @@ notmuch_database_open_with_config (const char *database_path,
 	/* Check features. */
 	incompat_features = NULL;
 	notmuch->features = _notmuch_database_parse_features (
-	    local, notmuch->xapian_db->get_metadata ("features").c_str (),
+	    notmuch, notmuch->xapian_db->get_metadata ("features").c_str (),
 	    version, mode == NOTMUCH_DATABASE_MODE_READ_WRITE ? 'w' : 'r',
 	    &incompat_features);
 	if (incompat_features) {
@@ -284,7 +377,7 @@ notmuch_database_open_with_config (const char *database_path,
 				     "Error: Notmuch database at %s\n"
 				     "       requires features (%s)\n"
 				     "       not supported by this version of notmuch.\n",
-				     notmuch_path, incompat_features));
+				     database_path, incompat_features));
 	    notmuch_database_destroy (notmuch);
 	    notmuch = NULL;
 	    status = NOTMUCH_STATUS_FILE_ERROR;
@@ -319,8 +412,10 @@ notmuch_database_open_with_config (const char *database_path,
 	notmuch->term_gen = new Xapian::TermGenerator;
 	notmuch->term_gen->set_stemmer (Xapian::Stem ("english"));
 	notmuch->value_range_processor = new Xapian::NumberRangeProcessor (NOTMUCH_VALUE_TIMESTAMP);
-	notmuch->date_range_processor = new ParseTimeRangeProcessor (NOTMUCH_VALUE_TIMESTAMP, "date:");
-	notmuch->last_mod_range_processor = new Xapian::NumberRangeProcessor (NOTMUCH_VALUE_LAST_MOD, "lastmod:");
+	notmuch->date_range_processor = new ParseTimeRangeProcessor (NOTMUCH_VALUE_TIMESTAMP,
+								     "date:");
+	notmuch->last_mod_range_processor = new Xapian::NumberRangeProcessor (NOTMUCH_VALUE_LAST_MOD,
+									      "lastmod:");
 	notmuch->query_parser->set_default_op (Xapian::Query::OP_AND);
 	notmuch->query_parser->set_database (*notmuch->xapian_db);
 	notmuch->query_parser->set_stemmer (Xapian::Stem ("english"));
@@ -339,10 +434,23 @@ notmuch_database_open_with_config (const char *database_path,
 	if (status)
 	    goto DONE;
 
-	status = _choose_hook_dir (notmuch, profile, &message);
+	status = _choose_dir (notmuch, profile,
+			      NOTMUCH_CONFIG_HOOK_DIR,
+			      "XDG_CONFIG_HOME",
+			      ".config",
+			      "hooks",
+			      &message);
 	if (status)
 	    goto DONE;
 
+	status = _choose_dir (notmuch, profile,
+			      NOTMUCH_CONFIG_BACKUP_DIR,
+			      "XDG_DATA_HOME",
+			      ".local/share",
+			      "backups",
+			      &message);
+	if (status)
+	    goto DONE;
 	status = _notmuch_config_load_defaults (notmuch);
 	if (status)
 	    goto DONE;
@@ -362,9 +470,64 @@ notmuch_database_open_with_config (const char *database_path,
 	notmuch = NULL;
 	status = NOTMUCH_STATUS_XAPIAN_EXCEPTION;
     }
+  DONE:
+    if (message_ptr)
+	*message_ptr = message;
+    return status;
+}
+
+notmuch_status_t
+notmuch_database_open_with_config (const char *database_path,
+				   notmuch_database_mode_t mode,
+				   const char *config_path,
+				   const char *profile,
+				   notmuch_database_t **database,
+				   char **status_string)
+{
+    notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
+    void *local = talloc_new (NULL);
+    notmuch_database_t *notmuch = NULL;
+    char *message = NULL;
+    GKeyFile *key_file = NULL;
+    bool split = false;
+
+    _init_libs ();
+
+    notmuch = _alloc_notmuch ();
+    if (! notmuch) {
+	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
+	goto DONE;
+    }
+
+    status = _load_key_file (notmuch, config_path, profile, &key_file);
+    if (status) {
+	message = strdup ("Error: cannot load config file.\n");
+	goto DONE;
+    }
+
+    if ((status = _choose_database_path (local, profile, key_file,
+					 &database_path, &split,
+					 &message)))
+	goto DONE;
+
+    status = _db_dir_exists (database_path, &message);
+    if (status)
+	goto DONE;
+
+    _set_database_path (notmuch, database_path);
+
+    status = _notmuch_choose_xapian_path (notmuch, database_path,
+					  &notmuch->xapian_path, &message);
+    if (status)
+	goto DONE;
+
+    status = _finish_open (notmuch, profile, mode, key_file, &message);
 
   DONE:
     talloc_free (local);
+
+    if (key_file)
+	g_key_file_free (key_file);
 
     if (message) {
 	if (status_string)
@@ -418,51 +581,92 @@ notmuch_database_create_with_config (const char *database_path,
 {
     notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
     notmuch_database_t *notmuch = NULL;
-    char *notmuch_path = NULL;
+    const char *notmuch_path = NULL;
     char *message = NULL;
     GKeyFile *key_file = NULL;
-    struct stat st;
+    void *local = talloc_new (NULL);
     int err;
+    bool split = false;
 
-    if ((status = _choose_database_path (config_path, profile, &key_file, &database_path, &message)))
-	goto DONE;
+    _init_libs ();
 
-    err = stat (database_path, &st);
-    if (err) {
-	IGNORE_RESULT (asprintf (&message, "Error: Cannot create database at %s: %s.\n",
-				 database_path, strerror (errno)));
-	status = NOTMUCH_STATUS_FILE_ERROR;
+    notmuch = _alloc_notmuch ();
+    if (! notmuch) {
+	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
 	goto DONE;
     }
 
-    if (! S_ISDIR (st.st_mode)) {
-	IGNORE_RESULT (asprintf (&message, "Error: Cannot create database at %s: "
-				 "Not a directory.\n",
-				 database_path));
-	status = NOTMUCH_STATUS_FILE_ERROR;
+    status = _load_key_file (notmuch, config_path, profile, &key_file);
+    if (status) {
+	message = strdup ("Error: cannot load config file.\n");
 	goto DONE;
     }
 
-    notmuch_path = talloc_asprintf (NULL, "%s/%s", database_path, ".notmuch");
+    if ((status = _choose_database_path (local, profile, key_file,
+					 &database_path, &split, &message)))
+	goto DONE;
 
-    err = mkdir (notmuch_path, 0755);
-    if (err) {
-	if (errno == EEXIST) {
-	    status = NOTMUCH_STATUS_DATABASE_EXISTS;
-	} else {
-	    IGNORE_RESULT (asprintf (&message, "Error: Cannot create directory %s: %s.\n",
-				     notmuch_path, strerror (errno)));
-	    status = NOTMUCH_STATUS_FILE_ERROR;
+    status = _db_dir_exists (database_path, &message);
+    if (status)
+	goto DONE;
+
+    _set_database_path (notmuch, database_path);
+
+    if (key_file && ! split) {
+	char *mail_root = notmuch_canonicalize_file_name (
+	    g_key_file_get_value (key_file, "database", "mail_root", NULL));
+	char *db_path = notmuch_canonicalize_file_name (database_path);
+
+	split = (mail_root && (0 != strcmp (mail_root, db_path)));
+
+	free (mail_root);
+	free (db_path);
+    }
+
+    if (split) {
+	notmuch_path = database_path;
+    } else {
+	if (! (notmuch_path = talloc_asprintf (local, "%s/%s", database_path, ".notmuch"))) {
+	    status = NOTMUCH_STATUS_OUT_OF_MEMORY;
+	    goto DONE;
 	}
+
+	err = mkdir (notmuch_path, 0755);
+	if (err) {
+	    if (errno == EEXIST) {
+		status = NOTMUCH_STATUS_DATABASE_EXISTS;
+		talloc_free (notmuch);
+		notmuch = NULL;
+	    } else {
+		IGNORE_RESULT (asprintf (&message, "Error: Cannot create directory %s: %s.\n",
+					 notmuch_path, strerror (errno)));
+		status = NOTMUCH_STATUS_FILE_ERROR;
+	    }
+	    goto DONE;
+	}
+    }
+
+    if (! (notmuch->xapian_path = talloc_asprintf (notmuch, "%s/%s", notmuch_path, "xapian"))) {
+	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
 	goto DONE;
     }
 
-    /* XXX this reads the config file twice, which is a bit wasteful */
-    status = notmuch_database_open_with_config (database_path,
-						NOTMUCH_DATABASE_MODE_READ_WRITE,
-						config_path,
-						profile,
-						&notmuch, &message);
+    status = _trial_open (notmuch->xapian_path, &message);
+    if (status == NOTMUCH_STATUS_SUCCESS) {
+	notmuch_database_destroy (notmuch);
+	notmuch = NULL;
+	status = NOTMUCH_STATUS_DATABASE_EXISTS;
+	goto DONE;
+    }
+
+    if (message)
+	free (message);
+
+    status = _finish_open (notmuch,
+			   profile,
+			   NOTMUCH_DATABASE_MODE_READ_WRITE,
+			   key_file,
+			   &message);
     if (status)
 	goto DONE;
 
@@ -479,8 +683,10 @@ notmuch_database_create_with_config (const char *database_path,
     }
 
   DONE:
-    if (notmuch_path)
-	talloc_free (notmuch_path);
+    talloc_free (local);
+
+    if (key_file)
+	g_key_file_free (key_file);
 
     if (message) {
 	if (status_string)
@@ -493,4 +699,155 @@ notmuch_database_create_with_config (const char *database_path,
     else
 	talloc_free (notmuch);
     return status;
+}
+
+notmuch_status_t
+notmuch_database_reopen (notmuch_database_t *notmuch,
+			 notmuch_database_mode_t new_mode)
+{
+    notmuch_database_mode_t cur_mode = _notmuch_database_mode (notmuch);
+
+    if (notmuch->xapian_db == NULL) {
+	_notmuch_database_log (notmuch, "Cannot reopen closed or nonexistent database\n");
+	return NOTMUCH_STATUS_ILLEGAL_ARGUMENT;
+    }
+
+    try {
+	if (cur_mode == new_mode &&
+	    new_mode == NOTMUCH_DATABASE_MODE_READ_ONLY) {
+	    notmuch->xapian_db->reopen ();
+	} else {
+	    notmuch->xapian_db->close ();
+
+	    delete notmuch->xapian_db;
+	    notmuch->xapian_db = NULL;
+	    /* no need to free the same object twice */
+	    notmuch->writable_xapian_db = NULL;
+
+	    if (new_mode == NOTMUCH_DATABASE_MODE_READ_WRITE) {
+		notmuch->writable_xapian_db = new Xapian::WritableDatabase (notmuch->xapian_path,
+									    DB_ACTION);
+		notmuch->xapian_db = notmuch->writable_xapian_db;
+	    } else {
+		notmuch->xapian_db = new Xapian::Database (notmuch->xapian_path,
+							   DB_ACTION);
+	    }
+	}
+    } catch (const Xapian::Error &error) {
+	if (! notmuch->exception_reported) {
+	    _notmuch_database_log (notmuch, "Error: A Xapian exception reopening database: %s\n",
+				   error.get_msg ().c_str ());
+	    notmuch->exception_reported = true;
+	}
+	return NOTMUCH_STATUS_XAPIAN_EXCEPTION;
+    }
+
+    notmuch->view++;
+    notmuch->open = true;
+    return NOTMUCH_STATUS_SUCCESS;
+}
+
+notmuch_status_t
+_maybe_load_config_from_database (notmuch_database_t *notmuch,
+				  GKeyFile *key_file,
+				  const char *database_path,
+				  const char *profile)
+{
+    char *message; /* ignored */
+
+    if (_db_dir_exists (database_path, &message))
+	return NOTMUCH_STATUS_NO_DATABASE;
+
+    _set_database_path (notmuch, database_path);
+
+    if (_notmuch_choose_xapian_path (notmuch, database_path, &notmuch->xapian_path, &message))
+	return NOTMUCH_STATUS_NO_DATABASE;
+
+    (void) _finish_open (notmuch, profile, NOTMUCH_DATABASE_MODE_READ_ONLY, key_file, &message);
+
+    return NOTMUCH_STATUS_SUCCESS;
+}
+
+notmuch_status_t
+notmuch_database_load_config (const char *database_path,
+			      const char *config_path,
+			      const char *profile,
+			      notmuch_database_t **database,
+			      char **status_string)
+{
+    notmuch_status_t status = NOTMUCH_STATUS_SUCCESS, warning = NOTMUCH_STATUS_SUCCESS;
+    void *local = talloc_new (NULL);
+    notmuch_database_t *notmuch = NULL;
+    char *message = NULL;
+    GKeyFile *key_file = NULL;
+    bool split = false;
+
+    _init_libs ();
+
+    notmuch = _alloc_notmuch ();
+    if (! notmuch) {
+	status = NOTMUCH_STATUS_OUT_OF_MEMORY;
+	goto DONE;
+    }
+
+    status = _load_key_file (notmuch, config_path, profile, &key_file);
+    switch (status) {
+    case NOTMUCH_STATUS_SUCCESS:
+	break;
+    case NOTMUCH_STATUS_NO_CONFIG:
+	warning = status;
+	break;
+    default:
+	message = strdup ("Error: cannot load config file.\n");
+	goto DONE;
+    }
+
+    status = _choose_database_path (local, profile, key_file,
+				    &database_path, &split, &message);
+    switch (status) {
+    case NOTMUCH_STATUS_NO_DATABASE:
+    case NOTMUCH_STATUS_SUCCESS:
+	if (! warning)
+	    warning = status;
+	break;
+    default:
+	goto DONE;
+    }
+
+
+    if (database_path) {
+	status = _maybe_load_config_from_database (notmuch, key_file, database_path, profile);
+	switch (status) {
+	case NOTMUCH_STATUS_NO_DATABASE:
+	case NOTMUCH_STATUS_SUCCESS:
+	    if (! warning)
+		warning = status;
+	    break;
+	default:
+	    goto DONE;
+	}
+    }
+
+    if (key_file) {
+	status = _notmuch_config_load_from_file (notmuch, key_file);
+	if (status)
+	    goto DONE;
+    }
+    status = _notmuch_config_load_defaults (notmuch);
+    if (status)
+	goto DONE;
+
+  DONE:
+    talloc_free (local);
+
+    if (status_string)
+	*status_string = message;
+
+    if (database)
+	*database = notmuch;
+
+    if (status)
+	return status;
+    else
+	return warning;
 }

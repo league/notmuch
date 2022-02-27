@@ -142,6 +142,7 @@ typedef enum _notmuch_private_status {
     NOTMUCH_PRIVATE_STATUS_FAILED_CRYPTO_CONTEXT_CREATION	= NOTMUCH_STATUS_FAILED_CRYPTO_CONTEXT_CREATION,
     NOTMUCH_PRIVATE_STATUS_UNKNOWN_CRYPTO_PROTOCOL		= NOTMUCH_STATUS_UNKNOWN_CRYPTO_PROTOCOL,
     NOTMUCH_PRIVATE_STATUS_NO_CONFIG				= NOTMUCH_STATUS_NO_CONFIG,
+    NOTMUCH_PRIVATE_STATUS_NO_DATABASE				= NOTMUCH_STATUS_NO_DATABASE,
     NOTMUCH_PRIVATE_STATUS_DATABASE_EXISTS			= NOTMUCH_STATUS_DATABASE_EXISTS,
 
     /* Then add our own private values. */
@@ -203,9 +204,6 @@ _notmuch_message_id_compressed (void *ctx, const char *message_id);
 
 notmuch_status_t
 _notmuch_database_ensure_writable (notmuch_database_t *notmuch);
-
-notmuch_status_t
-_notmuch_database_reopen (notmuch_database_t *notmuch);
 
 void
 _notmuch_database_log (notmuch_database_t *notmuch,
@@ -716,16 +714,21 @@ struct _notmuch_indexopts {
 
 /* config.cc */
 notmuch_status_t
-_notmuch_config_load_from_database (notmuch_database_t * db);
+_notmuch_config_load_from_database (notmuch_database_t *db);
 
 notmuch_status_t
-_notmuch_config_load_from_file (notmuch_database_t * db, GKeyFile *file);
+_notmuch_config_load_from_file (notmuch_database_t *db, GKeyFile *file);
 
 notmuch_status_t
-_notmuch_config_load_defaults (notmuch_database_t * db);
+_notmuch_config_load_defaults (notmuch_database_t *db);
 
 void
-_notmuch_config_cache (notmuch_database_t *db, notmuch_config_key_t key, const char* val);
+_notmuch_config_cache (notmuch_database_t *db, notmuch_config_key_t key, const char *val);
+
+/* open.cc */
+notmuch_status_t
+_notmuch_choose_xapian_path (void *ctx, const char *database_path, const char **xapian_path,
+			     char **message);
 
 NOTMUCH_END_DECLS
 

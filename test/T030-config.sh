@@ -7,9 +7,12 @@ test_begin_subtest "Get string value"
 test_expect_equal "$(notmuch config get user.name)" "Notmuch Test Suite"
 
 test_begin_subtest "Get list value"
-test_expect_equal "$(notmuch config get new.tags)" "\
+cat <<EOF > EXPECTED
+inbox
 unread
-inbox"
+EOF
+notmuch config get new.tags | sort > OUTPUT
+test_expect_equal_file EXPECTED OUTPUT
 
 test_begin_subtest "Set string value"
 notmuch config set foo.string "this is a string value"
@@ -43,25 +46,22 @@ notmuch config set foo.nonexistent
 test_expect_equal "$(notmuch config get foo.nonexistent)" ""
 
 test_begin_subtest "List all items"
-notmuch config list > STDOUT 2> STDERR
-printf "%s\n====\n%s\n" "$(< STDOUT)" "$(< STDERR)" | notmuch_config_sanitize > OUTPUT
-
+notmuch config list 2>&1 | notmuch_config_sanitize > OUTPUT
 cat <<EOF > EXPECTED
-database.path=MAIL_DIR
-user.name=Notmuch Test Suite
-user.primary_email=test_suite@notmuchmail.org
-user.other_email=test_suite_other@notmuchmail.org;test_suite@otherdomain.org
-new.tags=unread;inbox;
-new.ignore=
-search.exclude_tags=
-maildir.synchronize_flags=true
-foo.string=this is another string value
-foo.list=this;is another;list value;
 built_with.compact=something
 built_with.field_processor=something
 built_with.retry_lock=something
-====
-Error opening database at MAIL_DIR/.notmuch: No such file or directory
+database.mail_root=MAIL_DIR
+database.path=MAIL_DIR
+foo.list=this;is another;list value;
+foo.string=this is another string value
+maildir.synchronize_flags=true
+new.ignore=
+new.tags=unread;inbox
+search.exclude_tags=
+user.name=Notmuch Test Suite
+user.other_email=test_suite_other@notmuchmail.org;test_suite@otherdomain.org
+user.primary_email=test_suite@notmuchmail.org
 EOF
 test_expect_equal_file EXPECTED OUTPUT
 
@@ -76,7 +76,7 @@ test_expect_equal "$(notmuch --config:alt-config config get user.name)" \
     "Another Name"
 
 test_begin_subtest "Top level --config<space>FILE option"
-test_expect_equal "$(notmuch --config  alt-config config get user.name)" \
+test_expect_equal "$(notmuch --config alt-config config get user.name)" \
     "Another Name"
 
 test_begin_subtest "Top level --config=FILE option changed the right file"
@@ -96,14 +96,52 @@ test_expect_equal "$(notmuch --config=alt-config-link config get user.name)" \
 test_begin_subtest "Writing config file through symlink follows symlink"
 test_expect_equal "$(readlink alt-config-link)" "alt-config"
 
+test_begin_subtest "Round trip arbitrary key"
+key=g${RANDOM}.m${RANDOM}
+value=${RANDOM}
+notmuch config set ${key} ${value}
+output=$(notmuch config get ${key})
+test_expect_equal "${output}" "${value}"
+
+test_begin_subtest "Clear arbitrary key"
+notmuch config set ${key}
+output=$(notmuch config get ${key})
+test_expect_equal "${output}" ""
+
+db_path=${HOME}/database-path
+
 test_begin_subtest "Absolute database path returned"
 notmuch config set database.path ${HOME}/Maildir
 test_expect_equal "$(notmuch config get database.path)" \
 		  "${HOME}/Maildir"
 
-test_begin_subtest "Relative database path properly expanded"
+ln -s `pwd`/mail home/Maildir
+add_email_corpus
+test_begin_subtest "Relative database path expanded in open"
 notmuch config set database.path Maildir
-test_expect_equal "$(notmuch config get database.path)" \
-		  "${HOME}/Maildir"
+path=$(notmuch config get database.path)
+count=$(notmuch count '*')
+test_expect_equal "${path} ${count}" \
+		  "Maildir 52"
+
+test_begin_subtest "Add config to database"
+notmuch new
+key=g${RANDOM}.m${RANDOM}
+value=${RANDOM}
+notmuch config set --database ${key} ${value}
+notmuch dump --include=config > OUTPUT
+cat <<EOF > EXPECTED
+#notmuch-dump batch-tag:3 config
+#@ ${key} ${value}
+EOF
+test_expect_equal_file EXPECTED OUTPUT
+
+test_begin_subtest "Roundtrip config to/from database"
+notmuch new
+key=g${RANDOM}.m${RANDOM}
+value=${RANDOM}
+notmuch config set --database ${key} ${value}
+output=$(notmuch config get ${key})
+test_expect_equal "${output}" "${value}"
 
 test_done
