@@ -33,6 +33,8 @@
           src = ./.;
           hooks.nixfmt.enable = true;
           hooks.nix-linter.enable = true;
+          hooks.yamllint.enable = true;
+          hooks.yamllint.excludes = [ "vim/notmuch\\.yaml" "\\.travis\\.yml" ];
         };
       });
 
