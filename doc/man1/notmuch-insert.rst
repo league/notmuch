@@ -1,3 +1,5 @@
+.. _notmuch-insert(1):
+
 ==============
 notmuch-insert
 ==============
@@ -14,7 +16,7 @@ DESCRIPTION
 into the maildir directory given by configuration option
 **database.path**, then incorporates the message into the notmuch
 database. It is an alternative to using a separate tool to deliver the
-message then running **notmuch new** afterwards.
+message then running :any:`notmuch-new(1)` afterwards.
 
 The new message will be tagged with the tags specified by the
 **new.tags** configuration option, then by operations specified on the
@@ -25,58 +27,66 @@ If the new message is a duplicate of an existing message in the database
 (it has same Message-ID), it will be added to the maildir folder and
 notmuch database, but the tags will not be changed.
 
-The **insert** command supports hooks. See **notmuch-hooks(5)** for
+The **insert** command supports hooks. See :any:`notmuch-hooks(5)` for
 more details on hooks.
 
 Option arguments must appear before any tag operation arguments.
 Supported options for **insert** include
 
-``--folder=<``\ folder\ **>**
-    Deliver the message to the specified folder, relative to the
-    top-level directory given by the value of **database.path**. The
-    default is the empty string, which means delivering to the
-    top-level directory.
+.. program:: insert
 
-``--create-folder``
-    Try to create the folder named by the ``--folder`` option, if it
-    does not exist. Otherwise the folder must already exist for mail
-    delivery to succeed.
+.. option:: --folder=<folder>
 
-``--keep``
-    Keep the message file if indexing fails, and keep the message
-    indexed if applying tags or maildir flag synchronization
-    fails. Ignore these errors and return exit status 0 to indicate
-    successful mail delivery.
+   Deliver the message to the specified folder, relative to the
+   top-level directory given by the value of **database.path**. The
+   default is the empty string, which means delivering to the
+   top-level directory.
 
-``--no-hooks``
-    Prevent hooks from being run.
+.. option:: --create-folder
 
-``--world-readable``
-    When writing mail to the mailbox, allow it to be read by users
-    other than the current user.  Note that this does not override
-    umask.  By default, delivered mail is only readable by the current
-    user.
+   Try to create the folder named by the ``--folder`` option, if it
+   does not exist. Otherwise the folder must already exist for mail
+   delivery to succeed.
 
-``--decrypt=(true|nostash|auto|false)``
-    If ``true`` and the message is encrypted, try to decrypt the
-    message while indexing, stashing any session keys discovered.  If
-    ``auto``, and notmuch already knows about a session key for the
-    message, it will try decrypting using that session key but will
-    not try to access the user's secret keys.  If decryption is
-    successful, index the cleartext itself.  Either way, the message
-    is always stored to disk in its original form (ciphertext).
+.. option:: --keep
 
-    ``nostash`` is the same as ``true`` except that it will not stash
-    newly-discovered session keys in the database.
+   Keep the message file if indexing fails, and keep the message
+   indexed if applying tags or maildir flag synchronization
+   fails. Ignore these errors and return exit status 0 to indicate
+   successful mail delivery.
 
-    Be aware that the index is likely sufficient (and a stashed
-    session key is certainly sufficient) to reconstruct the cleartext
-    of the message itself, so please ensure that the notmuch message
-    index is adequately protected. DO NOT USE ``--decrypt=true`` or
-    ``--decrypt=nostash`` without considering the security of your
-    index.
+.. option:: --no-hooks
 
-    See also ``index.decrypt`` in **notmuch-config(1)**.
+   Prevent hooks from being run.
+
+.. option:: --world-readable
+
+   When writing mail to the mailbox, allow it to be read by users
+   other than the current user.  Note that this does not override
+   umask.  By default, delivered mail is only readable by the current
+   user.
+
+.. option:: --decrypt=(true|nostash|auto|false)
+
+   If ``true`` and the message is encrypted, try to decrypt the
+   message while indexing, stashing any session keys discovered.  If
+   ``auto``, and notmuch already knows about a session key for the
+   message, it will try decrypting using that session key but will
+   not try to access the user's secret keys.  If decryption is
+   successful, index the cleartext itself.  Either way, the message
+   is always stored to disk in its original form (ciphertext).
+
+   ``nostash`` is the same as ``true`` except that it will not stash
+   newly-discovered session keys in the database.
+
+   Be aware that the index is likely sufficient (and a stashed
+   session key is certainly sufficient) to reconstruct the cleartext
+   of the message itself, so please ensure that the notmuch message
+   index is adequately protected. DO NOT USE ``--decrypt=true`` or
+   ``--decrypt=nostash`` without considering the security of your
+   index.
+
+   See also ``index.decrypt`` in :any:`notmuch-config(1)`.
 
 EXIT STATUS
 ===========
@@ -101,14 +111,14 @@ status of the **insert** command.
 SEE ALSO
 ========
 
-**notmuch(1)**,
-**notmuch-config(1)**,
-**notmuch-count(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-reply(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
-**notmuch-tag(1)**
+:any:`notmuch(1)`,
+:any:`notmuch-config(1)`,
+:any:`notmuch-count(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-reply(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,
+:any:`notmuch-tag(1)`

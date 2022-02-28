@@ -5,6 +5,25 @@ test_description="library config API"
 
 add_email_corpus
 
+_libconfig_sanitize() {
+    ${NOTMUCH_PYTHON} /dev/fd/3 3<<'EOF'
+import os, sys, pwd, socket
+
+pw = pwd.getpwuid(os.getuid())
+user = pw.pw_name
+name = pw.pw_gecos.partition(",")[0]
+fqdn = socket.getaddrinfo(socket.gethostname(), 0, 0,
+                          socket.SOCK_STREAM, 0, socket.AI_CANONNAME)[0][3]
+for l in sys.stdin:
+    if l[:4] == "08: ":
+        l = l.replace(user, "USERNAME", 1).replace("@" + fqdn, "@FQDN", 1)
+        l = l.replace(".(none)", "", 1).replace(".localdomain", "", 1)
+    elif l[:4] == "10: ":
+        l = l.replace("'" + name, "'USER_FULL_NAME", 1)
+    sys.stdout.write(l)
+EOF
+}
+
 cat <<EOF > c_head
 #include <string.h>
 #include <stdlib.h>
@@ -380,26 +399,27 @@ cat c_head - c_tail <<'EOF' | test_C ${MAIL_DIR} '' %NULL%
 	 key < NOTMUCH_CONFIG_LAST;
 	 key = (notmuch_config_key_t)(key + 1)) {
 	const char *val = notmuch_config_get (db, key);
-        printf("%s\n", val ? val : "NULL" );
+	printf("%02d: '%s'\n", key, val ? val : "NULL" );
     }
 }
 EOF
 
-notmuch_passwd_sanitize < OUTPUT > OUTPUT.clean
+_libconfig_sanitize < OUTPUT > OUTPUT.clean
 
 cat <<'EOF' >EXPECTED
 == stdout ==
-MAIL_DIR
-MAIL_DIR
-MAIL_DIR/.notmuch/hooks
-MAIL_DIR/.notmuch/backups
-
-unread;inbox
-
-true
-USERNAME@FQDN
-NULL
-USER_FULL_NAME
+00: 'MAIL_DIR'
+01: 'MAIL_DIR'
+02: 'MAIL_DIR/.notmuch/hooks'
+03: 'MAIL_DIR/.notmuch/backups'
+04: ''
+05: 'unread;inbox'
+06: ''
+07: 'true'
+08: 'USERNAME@FQDN'
+09: 'NULL'
+10: 'USER_FULL_NAME'
+11: '8000'
 == stderr ==
 EOF
 unset MAILDIR
@@ -694,23 +714,24 @@ cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} %NULL% %NULL%
 	 key < NOTMUCH_CONFIG_LAST;
 	 key = (notmuch_config_key_t)(key + 1)) {
 	const char *val = notmuch_config_get (db, key);
-        printf("%s\n", val ? val : "NULL" );
+	printf("%02d: '%s'\n", key, val ? val : "NULL" );
     }
 }
 EOF
 cat <<'EOF' >EXPECTED
 == stdout ==
-MAIL_DIR
-MAIL_DIR
-MAIL_DIR/.notmuch/hooks
-MAIL_DIR/.notmuch/backups
-foo;bar;fub
-unread;inbox
-sekrit_junk
-true
-test_suite@notmuchmail.org
-test_suite_other@notmuchmail.org;test_suite@otherdomain.org
-Notmuch Test Suite
+00: 'MAIL_DIR'
+01: 'MAIL_DIR'
+02: 'MAIL_DIR/.notmuch/hooks'
+03: 'MAIL_DIR/.notmuch/backups'
+04: 'foo;bar;fub'
+05: 'unread;inbox'
+06: 'sekrit_junk'
+07: 'true'
+08: 'test_suite@notmuchmail.org'
+09: 'test_suite_other@notmuchmail.org;test_suite@otherdomain.org'
+10: 'Notmuch Test Suite'
+11: '8000'
 == stderr ==
 EOF
 test_expect_equal_file EXPECTED OUTPUT
@@ -723,25 +744,27 @@ cat c_head2 - c_tail <<'EOF' | test_C ${MAIL_DIR} /nonexistent %NULL%
 	 key < NOTMUCH_CONFIG_LAST;
 	 key = (notmuch_config_key_t)(key + 1)) {
 	const char *val = notmuch_config_get (db, key);
-	printf("%s\n", val ? val : "NULL" );
+	printf("%02d: '%s'\n", key, val ? val : "NULL" );
     }
 }
 EOF
 
-notmuch_passwd_sanitize < OUTPUT > OUTPUT.clean
+_libconfig_sanitize < OUTPUT > OUTPUT.clean
+
 cat <<'EOF' >EXPECTED
 == stdout ==
-MAIL_DIR
-MAIL_DIR
-MAIL_DIR/.notmuch/hooks
-MAIL_DIR/.notmuch/backups
-
-unread;inbox
-
-true
-USERNAME@FQDN
-NULL
-USER_FULL_NAME
+00: 'MAIL_DIR'
+01: 'MAIL_DIR'
+02: 'MAIL_DIR/.notmuch/hooks'
+03: 'MAIL_DIR/.notmuch/backups'
+04: ''
+05: 'unread;inbox'
+06: ''
+07: 'true'
+08: 'USERNAME@FQDN'
+09: 'NULL'
+10: 'USER_FULL_NAME'
+11: '8000'
 == stderr ==
 EOF
 test_expect_equal_file EXPECTED OUTPUT.clean
@@ -808,6 +831,7 @@ EOF
 cat <<'EOF' >EXPECTED
 == stdout ==
 aaabefore beforeval
+database.autocommit 8000
 database.backup_dir MAIL_DIR/.notmuch/backups
 database.hook_dir MAIL_DIR/.notmuch/hooks
 database.mail_root MAIL_DIR

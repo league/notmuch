@@ -1,3 +1,6 @@
+.. _notmuch(1):
+.. _notmuch-setup(1):
+
 =======
 notmuch
 =======
@@ -15,8 +18,9 @@ reading, and tagging large collections of email messages.
 
 This page describes how to get started using notmuch from the command
 line, and gives a brief overview of the commands available. For more
-information on e.g. **notmuch show** consult the **notmuch-show(1)** man
-page, also accessible via **notmuch help show**
+information on e.g. **notmuch show** consult the
+:any:`notmuch-show(1)` man page, also accessible via **notmuch help
+show**
 
 The quickest way to get started with Notmuch is to simply invoke the
 ``notmuch`` command with no arguments, which will interactively guide
@@ -39,25 +43,31 @@ OPTIONS
 
 Supported global options for ``notmuch`` include
 
-``--help`` [command-name]
-    Print a synopsis of available commands and exit. With an optional
-    command name, show the man page for that subcommand.
+.. program:: notmuch
 
-``--version``
-    Print the installed version of notmuch, and exit.
+.. option:: --help [command-name]
 
-``--config=FILE``
-    Specify the configuration file to use. This overrides any
-    configuration file specified by ${NOTMUCH\_CONFIG}. The empty
-    string is a permitted and sometimes useful value of *FILE*, which
-    tells ``notmuch`` to use only configuration metadata from the database.
+   Print a synopsis of available commands and exit. With an optional
+   command name, show the man page for that subcommand.
 
-``--uuid=HEX``
-    Enforce that the database UUID (a unique identifier which persists
-    until e.g. the database is compacted) is HEX; exit with an error
-    if it is not. This is useful to detect rollover in modification
-    counts on messages. You can find this UUID using e.g. ``notmuch
-    count --lastmod``
+.. option:: --version
+
+   Print the installed version of notmuch, and exit.
+
+.. option:: --config=FILE
+
+   Specify the configuration file to use. This overrides any
+   configuration file specified by :envvar:`NOTMUCH_CONFIG`. The empty
+   string is a permitted and sometimes useful value of *FILE*, which
+   tells ``notmuch`` to use only configuration metadata from the database.
+
+.. option:: --uuid=HEX
+
+   Enforce that the database UUID (a unique identifier which persists
+   until e.g. the database is compacted) is HEX; exit with an error
+   if it is not. This is useful to detect rollover in modification
+   counts on messages. You can find this UUID using e.g. ``notmuch
+   count --lastmod``
 
 All global options except ``--config`` can also be specified after the
 command. For example, ``notmuch subcommand --uuid=HEX`` is equivalent
@@ -75,7 +85,7 @@ use, (or to reconfigure it later).
 The setup command will prompt for your full name, your primary email
 address, any alternate email addresses you use, and the directory
 containing your email archives. Your answers will be written to a
-configuration file in ${NOTMUCH\_CONFIG} (if set) or
+configuration file in :envvar:`NOTMUCH_CONFIG` (if set) or
 ${HOME}/.notmuch-config . This configuration file will be created with
 descriptive comments, making it easy to edit by hand later to change the
 configuration. Or you can run **notmuch setup** again to change the
@@ -90,7 +100,8 @@ will do its best to detect those and ignore them.
 Mail storage that uses mbox format, (where one mbox file contains many
 messages), will not work with notmuch. If that's how your mail is
 currently stored, it is recommended you first convert it to maildir
-format with a utility such as mb2md before running **notmuch setup .**
+format with a utility such as :manpage:`mb2md(1)` before running
+**notmuch setup**.
 
 Invoking ``notmuch`` with no command argument will run **setup** if the
 setup command has not previously been completed.
@@ -99,30 +110,32 @@ OTHER COMMANDS
 --------------
 
 Several of the notmuch commands accept search terms with a common
-syntax. See **notmuch-search-terms**\ (7) for more details on the
+syntax. See :any:`notmuch-search-terms(7)` for more details on the
 supported syntax.
 
-The **search**, **show**, **address** and **count** commands are used
-to query the email database.
+The :any:`notmuch-search(1)`, :any:`notmuch-show(1)`,
+:any:`notmuch-address(1)` and :any:`notmuch-count(1)` commands are
+used to query the email database.
 
-The **reply** command is useful for preparing a template for an email
-reply.
+The :any:`notmuch-reply(1)` command is useful for preparing a template
+for an email reply.
 
-The **tag** command is the only command available for manipulating
-database contents.
+The :any:`notmuch-tag(1)` command is the only command available for
+manipulating database contents.
 
-The **dump** and **restore** commands can be used to create a textual
-dump of email tags for backup purposes, and to restore from that dump.
+The :any:`notmuch-dump(1)` and :any:`notmuch-restore(1)` commands can
+be used to create a textual dump of email tags for backup purposes,
+and to restore from that dump.
 
-The **config** command can be used to get or set settings in the notmuch
-configuration file.
+The :any:`notmuch-config(1)` command can be used to get or set
+settings in the notmuch configuration file.
 
 CUSTOM COMMANDS
 ---------------
 
 If the given command is not known to notmuch, notmuch tries to execute
-the external **notmuch-<subcommand>** in ${PATH} instead. This allows
-users to have their own notmuch related tools to be run via the
+the external **notmuch-<subcommand>** in :envvar:`PATH` instead. This
+allows users to have their own notmuch related tools to be run via the
 notmuch command. By design, this does not allow notmuch's own commands
 to be overridden using external commands.
 
@@ -146,38 +159,51 @@ ENVIRONMENT
 The following environment variables can be used to control the behavior
 of notmuch.
 
-**NOTMUCH\_CONFIG**
-    Specifies the location of the notmuch configuration file. Notmuch
-    will use ${HOME}/.notmuch-config if this variable is not set.
+.. envvar:: NOTMUCH_CONFIG
 
-**NOTMUCH\_TALLOC\_REPORT**
-    Location to write a talloc memory usage report. See
-    **talloc\_enable\_leak\_report\_full** in **talloc(3)** for more
-    information.
+   Specifies the location of the notmuch configuration file. See
+   :any:`notmuch-config(1)` for details.
 
-**NOTMUCH\_DEBUG\_QUERY**
-    If set to a non-empty value, the notmuch library will print (to
-    stderr) Xapian queries it constructs.
+.. envvar:: NOTMUCH_DATABASE
+
+   Specifies the location of the notmuch database. See
+   :any:`notmuch-config(1)` for details.
+
+.. envvar:: NOTMUCH_PROFILE
+
+   Selects among notmuch configurations. See :any:`notmuch-config(1)`
+   for details.
+
+.. envvar:: NOTMUCH_TALLOC_REPORT
+
+   Location to write a talloc memory usage report. See
+   **talloc\_enable\_leak\_report\_full** in :manpage:`talloc(3)` for more
+   information.
+
+.. envvar:: NOTMUCH_DEBUG_QUERY
+
+   If set to a non-empty value, the notmuch library will print (to
+   stderr) Xapian queries it constructs.
 
 SEE ALSO
 ========
 
-**notmuch-address(1)**,
-**notmuch-compact(1)**,
-**notmuch-config(1)**,
-**notmuch-count(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-insert(1)**,
-**notmuch-new(1)**,
-**notmuch-properties(7)**,
-**notmuch-reindex(1)**,
-**notmuch-reply(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
-**notmuch-tag(1)**
+:any:`notmuch-address(1)`,
+:any:`notmuch-compact(1)`,
+:any:`notmuch-config(1)`,
+:any:`notmuch-count(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-insert(1)`,
+:any:`notmuch-new(1)`,
+:any:`notmuch-properties(7)`,
+:any:`notmuch-reindex(1)`,
+:any:`notmuch-reply(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,
+:any:`notmuch-tag(1)`
 
 The notmuch website: **https://notmuchmail.org**
 
@@ -189,4 +215,4 @@ list <notmuch@notmuchmail.org> . Subscription is not required before
 posting, but is available from the notmuchmail.org website.
 
 Real-time interaction with the Notmuch community is available via IRC
-(server: irc.freenode.net, channel: #notmuch).
+(server: irc.libera.chat, channel: #notmuch).

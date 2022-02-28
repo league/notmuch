@@ -113,9 +113,9 @@ unset ALTERNATE_EDITOR
 
 # for reproducibility
 unset EMAIL
+unset NAME
 
-add_gnupg_home ()
-{
+add_gnupg_home () {
     [ -e "${GNUPGHOME}/gpg.conf" ] && return
     _gnupg_exit () { gpgconf --kill all 2>/dev/null || true; }
     at_exit_function _gnupg_exit
@@ -132,11 +132,11 @@ add_gnupg_home ()
     # Change this if we ship a new test key
     FINGERPRINT="5AEAB11F5E33DCE875DDB75B6D92612D94E46381"
     SELF_USERID="Notmuch Test Suite <test_suite@notmuchmail.org> (INSECURE!)"
+    SELF_EMAIL="test_suite@notmuchmail.org"
     printf '%s:6:\n' "$FINGERPRINT" | gpg --quiet --batch --no-tty --import-ownertrust
 }
 
-add_gpgsm_home ()
-{
+add_gpgsm_home () {
     test_require_external_prereq openssl
 
     local fpr
@@ -197,56 +197,53 @@ do
 done
 
 if test -n "$debug"; then
-    print_subtest () {
-	printf " %-4s" "[$((test_count - 1))]"
-    }
+	fmt_subtest () {
+		printf -v $1 " %-4s" "[$((test_count - 1))]"
+	}
 else
-    print_subtest () {
-	true
-    }
+	fmt_subtest () {
+		printf -v $1 ''
+	}
 fi
 
 test -n "$COLORS_WITHOUT_TTY" || [ -t 1 ] || color=
 
-if [ -n "$color" ] && [ "$ORIGINAL_TERM" != 'dumb' ] && (
-		TERM=$ORIGINAL_TERM &&
-		export TERM &&
-		tput bold
-		tput setaf
-		tput sgr0
-	) >/dev/null 2>&1
+if [ -n "$color" ] && [ "$ORIGINAL_TERM" != 'dumb' ] &&
+	tput -T "$ORIGINAL_TERM" -S <<<$'bold\nsetaf\nsgr0\n' >/dev/null 2>&1
 then
 	color=t
 else
 	color=
 fi
 
-if test -n "$color"; then
+if test -n "$color"
+then
+	# _tput run in subshell (``) only
+	_tput () { exec tput -T "$ORIGINAL_TERM" "$@"; }
+	unset BOLD RED GREEN BROWN SGR0
 	say_color () {
-		(
-		TERM=$ORIGINAL_TERM
-		export TERM
 		case "$1" in
-			error) tput bold; tput setaf 1;; # bold red
-			skip)  tput bold; tput setaf 2;; # bold green
-			pass)  tput setaf 2;;            # green
-			info)  tput setaf 3;;            # brown
-			*) test -n "$quiet" && return;;
+			error)	b=${BOLD=`_tput bold`}
+				c=${RED=`_tput setaf 1`}   ;; # bold red
+			skip)	b=${BOLD=`_tput bold`}
+				c=${GREEN=`_tput setaf 2`} ;; # bold green
+			pass)	b= c=${GREEN=`_tput setaf 2`} ;; # green
+			info)	b= c=${BROWN=`_tput setaf 3`} ;; # brown
+			*) b= c=; test -n "$quiet" && return ;;
 		esac
-		shift
-		printf " "
-		printf "$@"
-		tput sgr0
-		print_subtest
-		)
+		f=$2
+		shift 2
+		sgr0=${SGR0=`_tput sgr0`}
+		fmt_subtest st
+		printf " ${b}${c}${f}${sgr0}${st}" "$@"
 	}
 else
 	say_color() {
 		test -z "$1" && test -n "$quiet" && return
-		shift
-		printf " "
-		printf "$@"
-		print_subtest
+		f=$2
+		shift 2
+		fmt_subtest st
+		printf " ${f}${st}" "$@"
 	}
 fi
 
@@ -270,8 +267,7 @@ then
 fi
 
 test_description_printed=
-print_test_description ()
-{
+print_test_description () {
 	test -z "$test_description_printed" || return 0
 	echo
 	echo $this_test: "Testing ${test_description}"
@@ -345,90 +341,6 @@ export GNUPGHOME="${TEST_TMPDIR}/gnupg"
 trap 'trap_exit' EXIT
 trap 'trap_signal' HUP INT TERM
 
-# Deliver a message with emacs and add it to the database
-#
-# Uses emacs to generate and deliver a message to the mail store.
-# Accepts arbitrary extra emacs/elisp functions to modify the message
-# before sending, which is useful to doing things like attaching files
-# to the message and encrypting/signing.
-emacs_deliver_message ()
-{
-    local subject body smtp_dummy_pid smtp_dummy_port
-    subject="$1"
-    body="$2"
-    shift 2
-    # before we can send a message, we have to prepare the FCC maildir
-    mkdir -p "$MAIL_DIR"/sent/{cur,new,tmp}
-    # eval'ing smtp-dummy --background will set smtp_dummy_pid and -_port
-    smtp_dummy_pid= smtp_dummy_port=
-    eval `$TEST_DIRECTORY/smtp-dummy --background sent_message`
-    test -n "$smtp_dummy_pid" || return 1
-    test -n "$smtp_dummy_port" || return 1
-
-    test_emacs \
-	"(let ((message-send-mail-function 'message-smtpmail-send-it)
-	       (mail-host-address \"example.com\")
-	       (smtpmail-smtp-server \"localhost\")
-	       (smtpmail-smtp-service \"${smtp_dummy_port}\"))
-	   (notmuch-mua-mail)
-	   (message-goto-to)
-	   (insert \"test_suite@notmuchmail.org\nDate: 01 Jan 2000 12:00:00 -0000\")
-	   (message-goto-subject)
-	   (insert \"${subject}\")
-	   (message-goto-body)
-	   (insert \"${body}\")
-	   $*
-	   (notmuch-mua-send-and-exit))"
-
-    # In case message was sent properly, client waits for confirmation
-    # before exiting and resuming control here; therefore making sure
-    # that server exits by sending (KILL) signal to it is safe.
-    kill -9 $smtp_dummy_pid
-    notmuch new >/dev/null
-}
-
-# Pretend to deliver a message with emacs. Really save it to a file
-# and add it to the database
-#
-# Uses emacs to generate and deliver a message to the mail store.
-# Accepts arbitrary extra emacs/elisp functions to modify the message
-# before sending, which is useful to doing things like attaching files
-# to the message and encrypting/signing.
-#
-# If any GNU-style long-arguments (like --quiet or --decrypt=true) are
-# at the head of the argument list, they are sent directly to "notmuch
-# new" after message delivery
-emacs_fcc_message ()
-{
-    local nmn_args subject body
-    nmn_args=''
-    while [[ "$1" =~ ^-- ]]; do
-	nmn_args="$nmn_args $1"
-	shift
-    done
-    subject="$1"
-    body="$2"
-    shift 2
-    # before we can send a message, we have to prepare the FCC maildir
-    mkdir -p "$MAIL_DIR"/sent/{cur,new,tmp}
-
-    test_emacs \
-	"(let ((message-send-mail-function (lambda () t))
-	       (mail-host-address \"example.com\"))
-	   (notmuch-mua-mail)
-	   (message-goto-to)
-	   (insert \"test_suite@notmuchmail.org\nDate: 01 Jan 2000 12:00:00 -0000\")
-	   (message-goto-subject)
-	   (insert \"${subject}\")
-	   (message-goto-body)
-	   (insert \"${body}\")
-	   $*
-	   (let ((mml-secure-smime-sign-with-sender t)
-		 (mml-secure-openpgp-sign-with-sender t))
-	     (notmuch-mua-send-and-exit)))" || return 1
-    notmuch new $nmn_args >/dev/null
-}
-
 # Add an existing, fixed corpus of email to the database.
 #
 # $1 is the corpus dir under corpora to add, using "default" if unset.
@@ -437,8 +349,7 @@ emacs_fcc_message ()
 # history of the notmuch mailing list, which allows for reliably
 # testing commands that need to operate on a not-totally-trivial
 # number of messages.
-add_email_corpus ()
-{
+add_email_corpus () {
     local corpus
     corpus=${1:-default}
 
@@ -447,8 +358,7 @@ add_email_corpus ()
     notmuch new >/dev/null || die "'notmuch new' failed while adding email corpus"
 }
 
-test_begin_subtest ()
-{
+test_begin_subtest () {
     if [ -n "$inside_subtest" ]; then
 	exec 1>&6 2>&7		# Restore stdout and stderr
 	error "bug in test script: Missing test_expect_equal in ${BASH_SOURCE[1]}:${BASH_LINENO[0]}"
@@ -468,8 +378,7 @@ test_begin_subtest ()
 # not accept a test name. Instead, the caller should call
 # test_begin_subtest before calling this function in order to set the
 # name.
-test_expect_equal ()
-{
+test_expect_equal () {
 	local output expected testname
 	exec 1>&6 2>&7		# Restore stdout and stderr
 	if [ -z "$inside_subtest" ]; then
@@ -494,33 +403,56 @@ test_expect_equal ()
     fi
 }
 
-# Like test_expect_equal, but takes two filenames.
-test_expect_equal_file ()
-{
-	local file1 file2 testname basename1 basename2
-	exec 1>&6 2>&7		# Restore stdout and stderr
-	if [ -z "$inside_subtest" ]; then
-		error "bug in the test script: test_expect_equal_file without test_begin_subtest"
+test_diff_file_ () {
+    local file1 file2 testname basename1 basename2
+    file1="$1"
+    file2="$2"
+    if ! test_skip "$test_subtest_name"
+    then
+	if diff -q "$file1" "$file2" >/dev/null ; then
+	    test_ok_
+	else
+	    testname=$this_test.$test_count
+	    basename1=`basename "$file1"`
+	    basename2=`basename "$file2"`
+	    cp "$file1" "$testname.$basename1"
+	    cp "$file2" "$testname.$basename2"
+	    test_failure_ "$(diff -u "$testname.$basename1" "$testname.$basename2")"
 	fi
-	inside_subtest=
-	test "$#" = 2 ||
+    fi
+}
+
+# Like test_expect_equal, but takes two filenames.
+test_expect_equal_file () {
+    exec 1>&6 2>&7		# Restore stdout and stderr
+    if [ -z "$inside_subtest" ]; then
+	error "bug in the test script: test_expect_equal_file without test_begin_subtest"
+    fi
+    inside_subtest=
+    test "$#" = 2 ||
 	error "bug in the test script: not 2 parameters to test_expect_equal_file"
 
-	file1="$1"
-	file2="$2"
-	if ! test_skip "$test_subtest_name"
-	then
-		if diff -q "$file1" "$file2" >/dev/null ; then
-			test_ok_
-		else
-			testname=$this_test.$test_count
-			basename1=`basename "$file1"`
-			basename2=`basename "$file2"`
-			cp "$file1" "$testname.$basename1"
-			cp "$file2" "$testname.$basename2"
-			test_failure_ "$(diff -u "$testname.$basename1" "$testname.$basename2")"
-		fi
+    test_diff_file_ "$1" "$2"
+}
+
+# Like test_expect_equal, but takes two filenames. Fails if either is empty
+test_expect_equal_file_nonempty () {
+    exec 1>&6 2>&7		# Restore stdout and stderr
+    if [ -z "$inside_subtest" ]; then
+	error "bug in the test script: test_expect_equal_file_nonempty without test_begin_subtest"
     fi
+    inside_subtest=
+    test "$#" = 2 ||
+	error "bug in the test script: not 2 parameters to test_expect_equal_file_nonempty"
+
+    for file in "$1" "$2"; do
+	if [ ! -s "$file" ]; then
+	    test_failure_ "Missing or zero length file: $file"
+	    return $?
+	fi
+    done
+
+    test_diff_file_ "$1" "$2"
 }
 
 # Like test_expect_equal, but arguments are JSON expressions to be
@@ -577,51 +509,16 @@ test_json_nodes () {
 	fi
 }
 
-test_emacs_expect_t () {
-	local result
-	test "$#" = 1 ||
-	error "bug in the test script: not 1 parameter to test_emacs_expect_t"
-	if [ -z "$inside_subtest" ]; then
-		error "bug in the test script: test_emacs_expect_t without test_begin_subtest"
-	fi
-
-	# Run the test.
-	if ! test_skip "$test_subtest_name"
-	then
-		test_emacs "(notmuch-test-run $1)" >/dev/null
-
-		# Restore state after the test.
-		exec 1>&6 2>&7		# Restore stdout and stderr
-		inside_subtest=
-
-		# Report success/failure.
-		result=$(cat OUTPUT)
-		if [ "$result" = t ]
-		then
-			test_ok_
-		else
-			test_failure_ "${result}"
-		fi
-	else
-		# Restore state after the (non) test.
-		exec 1>&6 2>&7		# Restore stdout and stderr
-		inside_subtest=
-	fi
-}
-
-NOTMUCH_NEW ()
-{
+NOTMUCH_NEW () {
     notmuch new "${@}" | grep -v -E -e '^Processed [0-9]*( total)? file|Found [0-9]* total file'
 }
 
-NOTMUCH_DUMP_TAGS ()
-{
+NOTMUCH_DUMP_TAGS () {
     # this relies on the default format being batch-tag, otherwise some tests will break
     notmuch dump --include=tags "${@}" | sed '/^#/d' | sort
 }
 
-notmuch_drop_mail_headers ()
-{
+notmuch_drop_mail_headers () {
     $NOTMUCH_PYTHON -c '
 import email, sys
 msg = email.message_from_file(sys.stdin)
@@ -630,41 +527,39 @@ print(msg.as_string(False))
 ' "$@"
 }
 
-notmuch_exception_sanitize ()
-{
+notmuch_debug_sanitize () {
+    grep -v '^D.:'
+}
+
+notmuch_exception_sanitize () {
     perl -pe 's/(A Xapian exception occurred at .*[.]cc?):([0-9]*)/\1:XXX/'
 }
 
-notmuch_search_sanitize ()
-{
-    perl -pe 's/("?thread"?: ?)("?)................("?)/\1\2XXX\3/'
+notmuch_search_sanitize () {
+    notmuch_debug_sanitize | perl -pe 's/("?thread"?: ?)("?)................("?)/\1\2XXX\3/'
 }
 
-notmuch_search_files_sanitize ()
-{
+notmuch_search_files_sanitize () {
     notmuch_dir_sanitize
 }
 
-notmuch_dir_sanitize ()
-{
+notmuch_dir_sanitize () {
     sed -e "s,$MAIL_DIR,MAIL_DIR," -e "s,${PWD},CWD,g" "$@"
 }
 
 NOTMUCH_SHOW_FILENAME_SQUELCH='s,filename:.*/mail,filename:/XXX/mail,'
-notmuch_show_sanitize ()
-{
+notmuch_show_sanitize () {
     sed -e "$NOTMUCH_SHOW_FILENAME_SQUELCH"
 }
-notmuch_show_sanitize_all ()
-{
+notmuch_show_sanitize_all () {
+    notmuch_debug_sanitize | \
     sed \
 	-e 's| filename:.*| filename:XXXXX|' \
 	-e 's| id:[^ ]* | id:XXXXX |' | \
 	notmuch_date_sanitize
 }
 
-notmuch_json_show_sanitize ()
-{
+notmuch_json_show_sanitize () {
     sed \
 	-e 's|"id": "[^"]*",|"id": "XXXXX",|g' \
 	-e 's|"Date": "Fri, 05 Jan 2001 [^"]*0000"|"Date": "GENERATED_DATE"|g' \
@@ -674,58 +569,37 @@ notmuch_json_show_sanitize ()
 	-e 's|"content-length": [1-9][0-9]*|"content-length": "NONZERO"|g'
 }
 
-notmuch_emacs_error_sanitize ()
-{
+notmuch_emacs_error_sanitize () {
     local command
     command=$1
     shift
     for file in "$@"; do
 	echo "=== $file ==="
-	cat "$file"
+	notmuch_debug_sanitize < "$file"
     done | sed \
-	-e 's/^\[.*\]$/[XXX]/' \
+	-e '/^$/d' \
+	-e '/^\[.*\]$/d' \
 	-e "s|^\(command: \)\{0,1\}/.*/$command|\1YYY/$command|"
 }
 
-notmuch_date_sanitize ()
-{
+notmuch_date_sanitize () {
     sed \
 	-e 's/^Date: Fri, 05 Jan 2001 .*0000/Date: GENERATED_DATE/'
 }
 
-notmuch_uuid_sanitize ()
-{
+notmuch_uuid_sanitize () {
     sed 's/[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}/UUID/g'
 }
 
-notmuch_built_with_sanitize ()
-{
+notmuch_built_with_sanitize () {
     sed 's/^built_with[.]\(.*\)=.*$/built_with.\1=something/'
 }
 
-notmuch_passwd_sanitize()
-{
-    ${NOTMUCH_PYTHON} -c'
-import os, sys, pwd, socket
-
-pw = pwd.getpwuid(os.getuid())
-user = pw.pw_name
-name = pw.pw_gecos.partition(",")[0]
-fqdn = socket.getfqdn()
-
-for l in sys.stdin:
-    l = l.replace(user, "USERNAME").replace(fqdn, "FQDN").replace(".(none)","").replace(name, "USER_FULL_NAME")
-    sys.stdout.write(l)
-'
-}
-
-notmuch_config_sanitize ()
-{
+notmuch_config_sanitize () {
     notmuch_dir_sanitize | notmuch_built_with_sanitize
 }
 
-notmuch_show_part ()
-{
+notmuch_show_part () {
     awk '/^\014part}/{ f=0 }; { if (f) { print $0 } } /^\014part{ ID: '"$1"'/{ f=1 }'
 }
 
@@ -916,7 +790,7 @@ test_expect_success () {
 		test_run_ "$1"
 		run_ret="$?"
 		# test_run_ may update missing external prerequisites
-		test_check_missing_external_prereqs_ "$@" ||
+		test_check_missing_external_prereqs_ "$test_subtest_name" ||
 		if [ "$run_ret" = 0 -a "$eval_ret" = 0 ]
 		then
 			test_ok_
@@ -940,7 +814,7 @@ test_expect_code () {
 		test_run_ "$2"
 		run_ret="$?"
 		# test_run_ may update missing external prerequisites,
-		test_check_missing_external_prereqs_ "$@" ||
+		test_check_missing_external_prereqs_ "$test_subtest_name" ||
 		if [ "$run_ret" = 0 -a "$eval_ret" = "$1" ]
 		then
 			test_ok_
@@ -980,7 +854,7 @@ test_must_fail () {
 # - cmp's output is not nearly as easy to read as diff -u
 # - not all diff versions understand "-u"
 
-test_cmp() {
+test_cmp () {
 	$GIT_TEST_CMP "$@"
 }
 
@@ -1015,12 +889,13 @@ test_done () {
 	mkdir -p "$test_results_dir"
 	test_results_path="$test_results_dir/$this_test"
 
-	echo "total $test_count" >> $test_results_path
-	echo "success $test_success" >> $test_results_path
-	echo "fixed $test_fixed" >> $test_results_path
-	echo "broken $test_broken" >> $test_results_path
-	echo "failed $test_failure" >> $test_results_path
-	echo "" >> $test_results_path
+	printf %s\\n \
+		"success $test_success" \
+		"fixed $test_fixed" \
+		"broken $test_broken" \
+		"failed $test_failure" \
+		"total $test_count" \
+	    > $test_results_path
 
 	[ -n "$EMACS_SERVER" ] && test_emacs '(kill-emacs)'
 
@@ -1034,86 +909,11 @@ test_done () {
 	fi
 }
 
-emacs_generate_script () {
-	# Construct a little test script here for the benefit of the user,
-	# (who can easily run "run_emacs" to get the same emacs environment
-	# for investigating any failures).
-	cat <<EOF >"$TMP_DIRECTORY/run_emacs"
-#!/bin/sh
-export PATH=$PATH
-export NOTMUCH_CONFIG=$NOTMUCH_CONFIG
-
-# Here's what we are using here:
-#
-# --quick		Use minimal customization. This implies --no-init-file,
-#			--no-site-file and (emacs 24) --no-site-lisp
-#
-# --directory		Ensure that the local elisp sources are found
-#
-# --load		Force loading of notmuch.el and test-lib.el
-
-exec ${TEST_EMACS} --quick \
-	--directory "$NOTMUCH_BUILDDIR/emacs" --load notmuch.el \
-	--directory "$NOTMUCH_SRCDIR/test" --load test-lib.el \
-	"\$@"
-EOF
-	chmod a+x "$TMP_DIRECTORY/run_emacs"
-}
-
-test_emacs () {
-	# test dependencies beforehand to avoid the waiting loop below
-	missing_dependencies=
-	test_require_external_prereq dtach || missing_dependencies=1
-	test_require_external_prereq emacs || missing_dependencies=1
-	test_require_external_prereq ${TEST_EMACSCLIENT} || missing_dependencies=1
-	test -z "$missing_dependencies" || return
-
-	if [ -z "$EMACS_SERVER" ]; then
-		emacs_tests="$NOTMUCH_SRCDIR/test/${this_test_bare}.el"
-		if [ -f "$emacs_tests" ]; then
-			load_emacs_tests="--eval '(load \"$emacs_tests\")'"
-		else
-			load_emacs_tests=
-		fi
-		server_name="notmuch-test-suite-$$"
-		# start a detached session with an emacs server
-		# user's TERM (or 'vt100' in case user's TERM is known dumb
-		# or unknown) is given to dtach which assumes a minimally
-		# VT100-compatible terminal -- and emacs inherits that
-		TERM=$SMART_TERM dtach -n "$TEST_TMPDIR/emacs-dtach-socket.$$" \
-			sh -c "stty rows 24 cols 80; exec '$TMP_DIRECTORY/run_emacs' \
-				--no-window-system \
-				$load_emacs_tests \
-				--eval '(setq server-name \"$server_name\")' \
-				--eval '(server-start)' \
-				--eval '(orphan-watchdog $$)'" || return
-		EMACS_SERVER="$server_name"
-		# wait until the emacs server is up
-		until test_emacs '()' >/dev/null 2>/dev/null; do
-			sleep 1
-		done
-	fi
-
-	# Clear test-output output file.  Most Emacs tests end with a
-	# call to (test-output).  If the test code fails with an
-	# exception before this call, the output file won't get
-	# updated.  Since we don't want to compare against an output
-	# file from another test, so start out with an empty file.
-	rm -f OUTPUT
-	touch OUTPUT
-
-	${TEST_EMACSCLIENT} --socket-name="$EMACS_SERVER" --eval "(notmuch-test-progn $*)"
-}
-
-test_python() {
+test_python () {
     # Note: if there is need to print debug information from python program,
     # use stdout = os.fdopen(6, 'w') or stderr = os.fdopen(7, 'w')
     PYTHONPATH="$NOTMUCH_SRCDIR/bindings/python${PYTHONPATH:+:$PYTHONPATH}" \
 	$NOTMUCH_PYTHON -B - > OUTPUT
-}
-
-test_ruby() {
-    MAIL_DIR=$MAIL_DIR $NOTMUCH_RUBY -I "$NOTMUCH_BUILDDIR/bindings/ruby"> OUTPUT
 }
 
 test_C () {
@@ -1125,7 +925,7 @@ test_C () {
     echo "== stdout ==" > OUTPUT.stdout
     echo "== stderr ==" > OUTPUT.stderr
     ./${exec_file} "$@" 1>>OUTPUT.stdout 2>>OUTPUT.stderr
-    notmuch_dir_sanitize OUTPUT.stdout OUTPUT.stderr | notmuch_exception_sanitize > OUTPUT
+    notmuch_dir_sanitize OUTPUT.stdout OUTPUT.stderr | notmuch_exception_sanitize | notmuch_debug_sanitize > OUTPUT
 }
 
 make_shim () {
@@ -1197,9 +997,6 @@ test_init_ () {
 TEST_DIRECTORY=$NOTMUCH_BUILDDIR/test
 
 . "$NOTMUCH_SRCDIR/test/test-lib-common.sh" || exit 1
-
-emacs_generate_script
-
 
 # Use -P to resolve symlinks in our working directory so that the cwd
 # in subprocesses like git equals our $PWD (for pathname comparisons).

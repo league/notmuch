@@ -46,6 +46,33 @@ ID ID_call;
 ID ID_db_create;
 ID ID_db_mode;
 
+const rb_data_type_t notmuch_rb_object_type = {
+    .wrap_struct_name = "notmuch_object",
+    .function = {
+	.dfree = notmuch_rb_object_free,
+    },
+};
+
+#define define_type(id) \
+    const rb_data_type_t notmuch_rb_ ## id ## _type = { \
+	.wrap_struct_name = "notmuch_" #id, \
+	.parent = &notmuch_rb_object_type, \
+	.data = &notmuch_ ## id ## _destroy, \
+	.function = { \
+	    .dfree = notmuch_rb_object_free, \
+	}, \
+    }
+
+define_type (database);
+define_type (directory);
+define_type (filenames);
+define_type (query);
+define_type (threads);
+define_type (thread);
+define_type (messages);
+define_type (message);
+define_type (tags);
+
 /*
  * Document-module: Notmuch
  *
@@ -133,6 +160,30 @@ Init_notmuch (void)
      * Maximum allowed length of a tag
      */
     rb_define_const (mod, "TAG_MAX", INT2FIX (NOTMUCH_TAG_MAX));
+    /*
+     * Document-const: Notmuch::EXCLUDE_FLAG
+     *
+     * Only flag excluded results
+     */
+    rb_define_const (mod, "EXCLUDE_FLAG", INT2FIX (NOTMUCH_EXCLUDE_FLAG));
+    /*
+     * Document-const: Notmuch::EXCLUDE_TRUE
+     *
+     * Exclude messages from the results
+     */
+    rb_define_const (mod, "EXCLUDE_TRUE", INT2FIX (NOTMUCH_EXCLUDE_TRUE));
+    /*
+     * Document-const: Notmuch::EXCLUDE_FALSE
+     *
+     * Don't exclude anything
+     */
+    rb_define_const (mod, "EXCLUDE_FALSE", INT2FIX (NOTMUCH_EXCLUDE_FALSE));
+    /*
+     * Document-const: Notmuch::EXCLUDE_ALL
+     *
+     * Exclude all results
+     */
+    rb_define_const (mod, "EXCLUDE_ALL", INT2FIX (NOTMUCH_EXCLUDE_ALL));
 
     /*
      * Document-class: Notmuch::BaseError
@@ -215,6 +266,7 @@ Init_notmuch (void)
     rb_define_alloc_func (notmuch_rb_cDatabase, notmuch_rb_database_alloc);
     rb_define_singleton_method (notmuch_rb_cDatabase, "open", notmuch_rb_database_open, -1); /* in database.c */
     rb_define_method (notmuch_rb_cDatabase, "initialize", notmuch_rb_database_initialize, -1); /* in database.c */
+    rb_define_method (notmuch_rb_cDatabase, "destroy!", notmuch_rb_database_destroy, 0); /* in database.c */
     rb_define_method (notmuch_rb_cDatabase, "close", notmuch_rb_database_close, 0); /* in database.c */
     rb_define_method (notmuch_rb_cDatabase, "path", notmuch_rb_database_path, 0); /* in database.c */
     rb_define_method (notmuch_rb_cDatabase, "version", notmuch_rb_database_version, 0); /* in database.c */
@@ -230,7 +282,7 @@ Init_notmuch (void)
     rb_define_method (notmuch_rb_cDatabase, "find_message_by_filename",
 		      notmuch_rb_database_find_message_by_filename, 1); /* in database.c */
     rb_define_method (notmuch_rb_cDatabase, "all_tags", notmuch_rb_database_get_all_tags, 0); /* in database.c */
-    rb_define_method (notmuch_rb_cDatabase, "query", notmuch_rb_database_query_create, 1); /* in database.c */
+    rb_define_method (notmuch_rb_cDatabase, "query", notmuch_rb_database_query_create, -1); /* in database.c */
 
     /*
      * Document-class: Notmuch::Directory

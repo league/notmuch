@@ -45,7 +45,7 @@ if tags.has('WITH_EMACS'):
     # Hacky reimplementation of include to workaround limitations of
     # sphinx-doc
     lines = ['.. include:: /../emacs/rstdoc.rsti\n\n'] # in the source tree
-    for file in ('notmuch.rsti', 'notmuch-lib.rsti', 'notmuch-show.rsti', 'notmuch-tag.rsti'):
+    for file in ('notmuch.rsti', 'notmuch-lib.rsti', 'notmuch-show.rsti', 'notmuch-tag.rsti', 'notmuch-tree.rsti'):
         lines.extend(open(rsti_dir+'/'+file))
     rst_epilog = ''.join(lines)
     del lines
@@ -79,6 +79,11 @@ htmlhelp_basename = 'notmuchdoc'
 # Disable SmartyPants, as it mangles command lines.
 # Despite the name, this actually affects manual pages as well.
 html_use_smartypants = False
+
+# See:
+# - https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-manpages_url
+# - https://manpages.debian.org/
+manpages_url = 'https://manpages.debian.org/{page}.{section}.html'
 
 # -- Options for manual page output ---------------------------------------
 

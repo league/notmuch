@@ -1,3 +1,5 @@
+.. _notmuch-reply(1):
+
 =============
 notmuch-reply
 =============
@@ -34,64 +36,69 @@ The resulting message template is output to stdout.
 
 Supported options for **reply** include
 
-``--format=``\ (**default**\ \|\ **json**\ \|\ **sexp**\ \|\ **headers-only**)
-    **default**
-        Includes subject and quoted message body as an RFC 2822
-        message.
+.. program:: reply
 
-    **json**
-        Produces JSON output containing headers for a reply message
-        and the contents of the original message. This output can be
-        used by a client to create a reply message intelligently.
+.. option:: --format=(default|json|sexp|headers-only)
 
-    **sexp**
-        Produces S-Expression output containing headers for a reply
-        message and the contents of the original message. This output
-        can be used by a client to create a reply message
-        intelligently.
+   **default**
+     Includes subject and quoted message body as an RFC 2822
+     message.
 
-    **headers-only**
-        Only produces In-Reply-To, References, To, Cc, and Bcc
-        headers.
+   **json**
+     Produces JSON output containing headers for a reply message
+     and the contents of the original message. This output can be
+     used by a client to create a reply message intelligently.
 
-``--format-version=N``
-    Use the specified structured output format version. This is
-    intended for programs that invoke **notmuch(1)** internally. If
-    omitted, the latest supported version will be used.
+   **sexp**
+     Produces S-Expression output containing headers for a reply
+     message and the contents of the original message. This output
+     can be used by a client to create a reply message
+     intelligently.
 
-``--reply-to=``\ (**all**\ \|\ **sender**)
-    **all** (default)
-        Replies to all addresses.
+   **headers-only**
+     Only produces In-Reply-To, References, To, Cc, and Bcc
+     headers.
 
-    **sender**
-        Replies only to the sender. If replying to user's own message
-        (Reply-to: or From: header is one of the user's configured
-        email addresses), try To:, Cc:, and Bcc: headers in this
-        order, and copy values from the first that contains something
-        other than only the user's addresses.
+.. option:: --format-version=N
 
-``--decrypt=(false|auto|true)``
+   Use the specified structured output format version. This is
+   intended for programs that invoke :any:`notmuch(1)` internally. If
+   omitted, the latest supported version will be used.
 
-    If ``true``, decrypt any MIME encrypted parts found in the
-    selected content (i.e., "multipart/encrypted" parts). Status
-    of the decryption will be reported (currently only supported
-    with ``--format=json`` and ``--format=sexp``), and on successful
-    decryption the multipart/encrypted part will be replaced by
-    the decrypted content.
+.. option:: --reply-to=(all|sender)
 
-    If ``auto``, and a session key is already known for the
-    message, then it will be decrypted, but notmuch will not try
-    to access the user's secret keys.
+   **all** (default)
+     Replies to all addresses.
 
-    Use ``false`` to avoid even automatic decryption.
+   **sender**
+     Replies only to the sender. If replying to user's own message
+     (Reply-to: or From: header is one of the user's configured
+     email addresses), try To:, Cc:, and Bcc: headers in this
+     order, and copy values from the first that contains something
+     other than only the user's addresses.
 
-    Non-automatic decryption expects a functioning
-    **gpg-agent(1)** to provide any needed credentials. Without
-    one, the decryption will likely fail.
+.. option:: --decrypt=(false|auto|true)
 
-    Default: ``auto``
+   If ``true``, decrypt any MIME encrypted parts found in the
+   selected content (i.e., "multipart/encrypted" parts). Status
+   of the decryption will be reported (currently only supported
+   with ``--format=json`` and ``--format=sexp``), and on successful
+   decryption the multipart/encrypted part will be replaced by
+   the decrypted content.
 
-See **notmuch-search-terms(7)** for details of the supported syntax for
+   If ``auto``, and a session key is already known for the
+   message, then it will be decrypted, but notmuch will not try
+   to access the user's secret keys.
+
+   Use ``false`` to avoid even automatic decryption.
+
+   Non-automatic decryption expects a functioning
+   :manpage:`gpg-agent(1)` to provide any needed credentials. Without
+   one, the decryption will likely fail.
+
+   Default: ``auto``
+
+See :any:`notmuch-search-terms(7)` for details of the supported syntax for
 <search-terms>.
 
 Note: It is most common to use **notmuch reply** with a search string
@@ -116,15 +123,15 @@ This command supports the following special exit status codes
 SEE ALSO
 ========
 
-**notmuch(1)**,
-**notmuch-config(1)**,
-**notmuch-count(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-insert(1)**,
-**notmuch-new(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
-**notmuch-tag(1)**
+:any:`notmuch(1)`,
+:any:`notmuch-config(1)`,
+:any:`notmuch-count(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-insert(1)`,
+:any:`notmuch-new(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,
+:any:`notmuch-tag(1)`

@@ -2,9 +2,11 @@
 
 test_description="emacs notmuch-show view"
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
 
 EXPECTED=$NOTMUCH_SRCDIR/test/emacs-show.expected-output
 
+test_require_emacs
 add_email_corpus
 
 test_begin_subtest "Hiding Original Message region at beginning of a message"
@@ -189,9 +191,8 @@ test_expect_equal "$(notmuch_emacs_error_sanitize notmuch_fail OUTPUT MESSAGES E
 === MESSAGES ===
 This is an error (see *Notmuch errors* for more details)
 === ERROR ===
-[XXX]
 This is an error
-command: YYY/notmuch_fail show --format\\=sexp --format-version\\=4 --decrypt\\=true --exclude\\=false \\' \\* \\'
+command: YYY/notmuch_fail show --format\\=sexp --format-version\\=5 --decrypt\\=true --exclude\\=false \\' \\* \\'
 exit status: 1
 stderr:
 This is an error

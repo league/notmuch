@@ -23,6 +23,7 @@
 
 #include <notmuch.h>
 #include <ruby.h>
+#include <talloc.h>
 
 extern VALUE notmuch_rb_cDatabase;
 extern VALUE notmuch_rb_cDirectory;
@@ -55,77 +56,98 @@ extern ID ID_db_mode;
 # define RSTRING_PTR(v) (RSTRING((v))->ptr)
 #endif /* !defined (RSTRING_PTR) */
 
-#define Data_Get_Notmuch_Database(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "database closed");		\
-	Data_Get_Struct ((obj), notmuch_database_t, (ptr));	\
+extern const rb_data_type_t notmuch_rb_object_type;
+extern const rb_data_type_t notmuch_rb_database_type;
+extern const rb_data_type_t notmuch_rb_directory_type;
+extern const rb_data_type_t notmuch_rb_filenames_type;
+extern const rb_data_type_t notmuch_rb_query_type;
+extern const rb_data_type_t notmuch_rb_threads_type;
+extern const rb_data_type_t notmuch_rb_thread_type;
+extern const rb_data_type_t notmuch_rb_messages_type;
+extern const rb_data_type_t notmuch_rb_message_type;
+extern const rb_data_type_t notmuch_rb_tags_type;
+
+#define Data_Get_Notmuch_Rb_Object(obj, type, ptr)		    		    \
+    do {									    \
+	(ptr) = rb_check_typeddata ((obj), (type));				    \
+	if (RB_UNLIKELY (!(ptr))) {						    \
+	    VALUE cname = rb_class_name (CLASS_OF ((obj)));			    \
+	    rb_raise (rb_eRuntimeError, "%"PRIsVALUE" object destroyed", cname);    \
+	}									    \
     } while (0)
 
-#define Data_Get_Notmuch_Directory(obj, ptr)			\
+#define Data_Get_Notmuch_Object(obj, type, ptr)			\
     do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "directory destroyed");	\
-	Data_Get_Struct ((obj), notmuch_directory_t, (ptr));	\
+	notmuch_rb_object_t *rb_wrapper;			\
+	Data_Get_Notmuch_Rb_Object ((obj), (type), rb_wrapper);	\
+	(ptr) = rb_wrapper->nm_object;				\
     } while (0)
 
-#define Data_Get_Notmuch_FileNames(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "filenames destroyed");	\
-	Data_Get_Struct ((obj), notmuch_filenames_t, (ptr));	\
-    } while (0)
+#define Data_Wrap_Notmuch_Object(klass, type, ptr) \
+    TypedData_Wrap_Struct ((klass), (type), notmuch_rb_object_create ((ptr), "notmuch_rb_object: " __location__))
 
-#define Data_Get_Notmuch_Query(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "query destroyed");		\
-	Data_Get_Struct ((obj), notmuch_query_t, (ptr));	\
-    } while (0)
+#define Data_Get_Notmuch_Database(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_database_type, (ptr))
 
-#define Data_Get_Notmuch_Threads(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "threads destroyed");	\
-	Data_Get_Struct ((obj), notmuch_threads_t, (ptr));	\
-    } while (0)
+#define Data_Get_Notmuch_Directory(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_directory_type, (ptr))
 
-#define Data_Get_Notmuch_Messages(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "messages destroyed");	\
-	Data_Get_Struct ((obj), notmuch_messages_t, (ptr));	\
-    } while (0)
+#define Data_Get_Notmuch_FileNames(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_filenames_type, (ptr))
 
-#define Data_Get_Notmuch_Thread(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "thread destroyed");	\
-	Data_Get_Struct ((obj), notmuch_thread_t, (ptr));	\
-    } while (0)
+#define Data_Get_Notmuch_Query(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_query_type, (ptr))
 
-#define Data_Get_Notmuch_Message(obj, ptr)			\
-    do {							\
-	Check_Type ((obj), T_DATA);				\
-	if (DATA_PTR ((obj)) == NULL)				\
-	rb_raise (rb_eRuntimeError, "message destroyed");	\
-	Data_Get_Struct ((obj), notmuch_message_t, (ptr));	\
-    } while (0)
+#define Data_Get_Notmuch_Threads(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_threads_type, (ptr))
 
-#define Data_Get_Notmuch_Tags(obj, ptr)			\
-    do {						\
-	Check_Type ((obj), T_DATA);			\
-	if (DATA_PTR ((obj)) == NULL)			\
-	rb_raise (rb_eRuntimeError, "tags destroyed");	\
-	Data_Get_Struct ((obj), notmuch_tags_t, (ptr));	\
-    } while (0)
+#define Data_Get_Notmuch_Messages(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_messages_type, (ptr))
+
+#define Data_Get_Notmuch_Thread(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_thread_type, (ptr))
+
+#define Data_Get_Notmuch_Message(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_message_type, (ptr))
+
+#define Data_Get_Notmuch_Tags(obj, ptr) \
+    Data_Get_Notmuch_Object ((obj), &notmuch_rb_tags_type, (ptr))
+
+typedef struct {
+    void *nm_object;
+} notmuch_rb_object_t;
+
+static inline void *
+notmuch_rb_object_create (void *nm_object, const char *name)
+{
+    notmuch_rb_object_t *rb_wrapper = talloc_named_const (NULL, sizeof (*rb_wrapper), name);
+
+    if (RB_UNLIKELY (!rb_wrapper))
+	return NULL;
+
+    rb_wrapper->nm_object = nm_object;
+    talloc_steal (rb_wrapper, nm_object);
+    return rb_wrapper;
+}
+
+static inline void
+notmuch_rb_object_free (void *rb_wrapper)
+{
+    talloc_free (rb_wrapper);
+}
+
+static inline void
+notmuch_rb_object_destroy (VALUE rb_object, const rb_data_type_t *type)
+{
+    notmuch_rb_object_t *rb_wrapper;
+
+    Data_Get_Notmuch_Rb_Object (rb_object, type, rb_wrapper);
+
+    /* Call the corresponding notmuch_*_destroy function */
+    ((void (*)(void *)) type->data) (rb_wrapper->nm_object);
+    notmuch_rb_object_free (rb_wrapper);
+    DATA_PTR (rb_object) = NULL;
+}
 
 /* status.c */
 void
@@ -134,6 +156,9 @@ notmuch_rb_status_raise (notmuch_status_t status);
 /* database.c */
 VALUE
 notmuch_rb_database_alloc (VALUE klass);
+
+VALUE
+notmuch_rb_database_destroy (VALUE self);
 
 VALUE
 notmuch_rb_database_initialize (int argc, VALUE *argv, VALUE klass);
@@ -181,7 +206,7 @@ VALUE
 notmuch_rb_database_get_all_tags (VALUE self);
 
 VALUE
-notmuch_rb_database_query_create (VALUE self, VALUE qstrv);
+notmuch_rb_database_query_create (int argc, VALUE *argv, VALUE self);
 
 /* directory.c */
 VALUE

@@ -2,9 +2,11 @@
 
 test_description="emacs tree view interface"
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
 
 EXPECTED=$NOTMUCH_SRCDIR/test/emacs-tree.expected-output
 
+test_require_emacs
 add_email_corpus
 
 test_begin_subtest "Basic notmuch-tree view in emacs"

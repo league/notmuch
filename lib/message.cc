@@ -68,7 +68,7 @@ struct maildir_flag_tag {
 };
 
 /* ASCII ordered table of Maildir flags and associated tags */
-static struct maildir_flag_tag flag2tag[] = {
+static const struct maildir_flag_tag flag2tag[] = {
     { 'D', "draft",   false },
     { 'F', "flagged", false },
     { 'P', "passed",  false },
@@ -288,7 +288,7 @@ _notmuch_message_create_for_message_id (notmuch_database_t *notmuch,
 
 	doc_id = _notmuch_database_generate_doc_id (notmuch);
     } catch (const Xapian::Error &error) {
-	_notmuch_database_log (notmuch_message_get_database (message),
+	_notmuch_database_log (notmuch,
 			       "A Xapian exception occurred creating message: %s\n",
 			       error.get_msg ().c_str ());
 	notmuch->exception_reported = true;
@@ -742,7 +742,7 @@ _notmuch_message_remove_terms (notmuch_message_t *message, const char *prefix)
  * properties, along with any automatic tags*/
 /* According to Xapian API docs, none of these calls throw
  * exceptions */
-notmuch_private_status_t
+static notmuch_private_status_t
 _notmuch_message_remove_indexed_terms (notmuch_message_t *message)
 {
     Xapian::TermIterator i;

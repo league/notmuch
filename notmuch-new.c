@@ -81,7 +81,7 @@ static volatile sig_atomic_t interrupted;
 static void
 handle_sigint (unused (int sig))
 {
-    static char msg[] = "Stopping...         \n";
+    static const char msg[] = "Stopping...         \n";
 
     /* This write is "opportunistic", so it's okay to ignore the
      * result.  It is not required for correctness, and if it does
@@ -403,8 +403,11 @@ add_file (notmuch_database_t *notmuch, const char *filename,
 	break;
     /* Non-fatal issues (go on to next file). */
     case NOTMUCH_STATUS_DUPLICATE_MESSAGE_ID:
-	if (state->synchronize_flags)
-	    notmuch_message_maildir_flags_to_tags (message);
+	if (state->synchronize_flags) {
+	    status = notmuch_message_maildir_flags_to_tags (message);
+	    if (print_status_message ("add_file", message, status))
+		goto DONE;
+	}
 	break;
     case NOTMUCH_STATUS_FILE_NOT_EMAIL:
 	fprintf (stderr, "Note: Ignoring non-mail file: %s\n", filename);

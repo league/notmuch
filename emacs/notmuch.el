@@ -974,7 +974,8 @@ PROMPT is the string to prompt with."
 
 (put 'notmuch-search 'notmuch-doc "Search for messages.")
 ;;;###autoload
-(defun notmuch-search (&optional query sort-order target-thread target-line no-display)
+(defun notmuch-search (&optional query sort-order target-thread target-line
+				 no-display)
   "Display threads matching QUERY in a notmuch-search buffer.
 
 If QUERY is nil, it is read interactively from the minibuffer.
@@ -1020,7 +1021,7 @@ the configured default sort order."
       (save-excursion
 	(let ((proc (notmuch-start-notmuch
 		     "notmuch-search" buffer #'notmuch-search-process-sentinel
-		     "search" "--format=sexp" "--format-version=4"
+		     "search" "--format=sexp" "--format-version=5"
 		     (concat "--sort=" (symbol-name (or sort-order 'newest-first)))
 		     query)))
 	  ;; Use a scratch buffer to accumulate partial output.
@@ -1187,8 +1188,6 @@ Point should be at the beginning of the line."
 	  (notmuch-search-find-authors)))
 
 ;;; _
-
-(setq mail-user-agent 'notmuch-user-agent)
 
 (provide 'notmuch)
 

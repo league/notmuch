@@ -1,3 +1,5 @@
+.. _notmuch-compact(1):
+
 ===============
 notmuch-compact
 ===============
@@ -24,37 +26,31 @@ process (which may be quite long) to protect data integrity.
 
 Supported options for **compact** include
 
-``--backup=``\ <directory>
-    Save the current database to the given directory before replacing
-    it with the compacted database. The backup directory must not
-    exist and it must reside on the same mounted filesystem as the
-    current database.
+.. program:: compact
 
-``--quiet``
-    Do not report database compaction progress to stdout.
+.. option:: --backup=<directory>
 
-ENVIRONMENT
-===========
+   Save the current database to the given directory before replacing
+   it with the compacted database. The backup directory must not
+   exist and it must reside on the same mounted filesystem as the
+   current database.
 
-The following environment variables can be used to control the behavior
-of notmuch.
+.. option:: --quiet
 
-**NOTMUCH\_CONFIG**
-    Specifies the location of the notmuch configuration file. Notmuch
-    will use ${HOME}/.notmuch-config if this variable is not set.
+   Do not report database compaction progress to stdout.
 
 SEE ALSO
 ========
 
-**notmuch(1)**,
-**notmuch-count(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-insert(1)**,
-**notmuch-new(1)**,
-**notmuch-reply(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
-**notmuch-tag(1)**
+:any:`notmuch(1)`,
+:any:`notmuch-count(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-insert(1)`,
+:any:`notmuch-new(1)`,
+:any:`notmuch-reply(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,
+:any:`notmuch-tag(1)`

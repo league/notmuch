@@ -2,9 +2,11 @@
 
 test_description="emacs interface"
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
 
 EXPECTED=$NOTMUCH_SRCDIR/test/emacs.expected-output
 
+test_require_emacs
 add_email_corpus
 
 # syntax errors in test-lib.el cause mysterious failures
@@ -867,7 +869,7 @@ test_emacs '(notmuch-show "id:\"bought\"")
 	(notmuch-show-stash-message-id-stripped)
 	(notmuch-show-stash-tags)
 	(notmuch-show-stash-filename)
-	(notmuch-show-stash-mlarchive-link "Gmane")
+	(notmuch-show-stash-mlarchive-link "Notmuch")
 	(notmuch-show-stash-mlarchive-link "MARC")
 	(notmuch-show-stash-mlarchive-link "Mail Archive, The")
 	(switch-to-buffer
@@ -888,7 +890,7 @@ id:bought
 bought
 inbox,stashtest
 ${gen_msg_filename}
-https://mid.gmane.org/bought
+https://nmbug.notmuchmail.org/nmweb/show/bought
 https://marc.info/?i=bought
 https://mid.mail-archive.com/bought
 EOF
@@ -1057,9 +1059,8 @@ End of search results.
 === MESSAGES ===
 YYY/notmuch_fail exited with status 1 (see *Notmuch errors* for more details)
 === ERROR ===
-[XXX]
 YYY/notmuch_fail exited with status 1
-command: YYY/notmuch_fail search --format\=sexp --format-version\=4 --sort\=newest-first tag\:inbox
+command: YYY/notmuch_fail search --format\=sexp --format-version\=5 --sort\=newest-first tag\:inbox
 exit status: 1"
 
 test_begin_subtest "Search handles subprocess warnings"

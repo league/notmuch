@@ -28,12 +28,7 @@
 VALUE
 notmuch_rb_messages_destroy (VALUE self)
 {
-    notmuch_messages_t *messages;
-
-    Data_Get_Notmuch_Messages (self, messages);
-
-    notmuch_messages_destroy (messages);
-    DATA_PTR (self) = NULL;
+    notmuch_rb_object_destroy (self, &notmuch_rb_messages_type);
 
     return Qnil;
 }
@@ -53,7 +48,7 @@ notmuch_rb_messages_each (VALUE self)
 
     for (; notmuch_messages_valid (messages); notmuch_messages_move_to_next (messages)) {
 	message = notmuch_messages_get (messages);
-	rb_yield (Data_Wrap_Struct (notmuch_rb_cMessage, NULL, NULL, message));
+	rb_yield (Data_Wrap_Notmuch_Object (notmuch_rb_cMessage, &notmuch_rb_message_type, message));
     }
 
     return self;
@@ -76,5 +71,5 @@ notmuch_rb_messages_collect_tags (VALUE self)
     if (!tags)
 	rb_raise (notmuch_rb_eMemoryError, "Out of memory");
 
-    return Data_Wrap_Struct (notmuch_rb_cTags, NULL, NULL, tags);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cTags, &notmuch_rb_tags_type, tags);
 }

@@ -1,3 +1,5 @@
+.. _notmuch-count(1):
+
 =============
 notmuch-count
 =============
@@ -17,56 +19,63 @@ The number of matching messages (or threads) is output to stdout.
 With no search terms, a count of all messages (or threads) in the
 database will be displayed.
 
-See **notmuch-search-terms(7)** for details of the supported syntax for
+See :any:`notmuch-search-terms(7)` for details of the supported syntax for
 <search-terms>.
 
 Supported options for **count** include
 
-``--output=(messages|threads|files)``
-    **messages**
-        Output the number of matching messages. This is the default.
+.. program:: count
 
-    **threads**
-        Output the number of matching threads.
+.. option:: --output=(messages|threads|files)
 
-    **files**
-        Output the number of files associated with matching
-        messages. This may be bigger than the number of matching
-        messages due to duplicates (i.e. multiple files having the
-        same message-id).
+   **messages**
+     Output the number of matching messages. This is the default.
 
-``--exclude=(true|false)``
-    Specify whether to omit messages matching search.exclude\_tags from
-    the count (the default) or not.
+   **threads**
+     Output the number of matching threads.
 
-``--batch``
-    Read queries from a file (stdin by default), one per line, and
-    output the number of matching messages (or threads) to stdout, one
-    per line. On an empty input line the count of all messages (or
-    threads) in the database will be output. This option is not
-    compatible with specifying search terms on the command line.
+   **files**
+     Output the number of files associated with matching
+     messages. This may be bigger than the number of matching
+     messages due to duplicates (i.e. multiple files having the
+     same message-id).
 
-``--lastmod``
-    Append lastmod (counter for number of database updates) and UUID
-    to the output. lastmod values are only comparable between
-    databases with the same UUID.
+.. option:: --exclude=(true|false)
 
-``--input=``\ <filename>
-    Read input from given file, instead of from stdin. Implies
-    ``--batch``.
+   Specify whether to omit messages matching search.exclude\_tags from
+   the count (the default) or not.
+
+.. option:: --batch
+
+   Read queries from a file (stdin by default), one per line, and
+   output the number of matching messages (or threads) to stdout, one
+   per line. On an empty input line the count of all messages (or
+   threads) in the database will be output. This option is not
+   compatible with specifying search terms on the command line.
+
+.. option:: --lastmod
+
+   Append lastmod (counter for number of database updates) and UUID
+   to the output. lastmod values are only comparable between
+   databases with the same UUID.
+
+.. option:: --input=<filename>
+
+   Read input from given file, instead of from stdin. Implies
+   ``--batch``.
 
 SEE ALSO
 ========
 
-**notmuch(1)**,
-**notmuch-config(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-insert(1)**,
-**notmuch-new(1)**,
-**notmuch-reply(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
-**notmuch-tag(1)**
+:any:`notmuch(1)`,
+:any:`notmuch-config(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-insert(1)`,
+:any:`notmuch-new(1)`,
+:any:`notmuch-reply(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,
+:any:`notmuch-tag(1)`

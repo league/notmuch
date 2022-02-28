@@ -5,8 +5,7 @@ test_description='"notmuch search, count and show" with excludes in several vari
 # Generates a thread consisting of a top level message and 'length'
 # replies. The subject of the top message 'subject: top message"
 # and the subject of the nth reply in the thread is "subject: reply n"
-generate_thread ()
-{
+generate_thread () {
     local subject="$1"
     local length="$2"
     generate_message '[subject]="'"${subject}: top message"'"' '[body]="'"body of top message"'"'
@@ -22,7 +21,7 @@ generate_thread ()
     done
     notmuch new > /dev/null
     # We cannot retrieve the thread_id until after we have run notmuch new.
-    gen_thread_id=`notmuch search --output=threads id:${gen_thread_msg_id[0]}`
+    gen_thread_id=$(notmuch search --output=threads id:${gen_thread_msg_id[0]} 2>/dev/null)
 }
 
 #############################################
