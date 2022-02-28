@@ -1,3 +1,33 @@
+Notmuch 0.32.2 (2021-06-27)
+===========================
+
+General
+-------
+
+Fix a bug from 2017 that can add duplicate thread-id terms to message
+documents.
+
+CLI
+---
+
+Fix small memory leak in notmuch new.
+
+Emacs
+-----
+
+Add `(require 'seq)` for `seq-some`.
+
+Documentation
+-------------
+
+Fix man page build for Sphinx 4.x. Fix variable name in emacs docs.
+
+Tests
+-----
+
+Fix backup creation in `perf-test/T00-new`.  Check openssl
+prerequisite in `add_gpgsm_home`.
+
 Notmuch 0.32.1 (2021-05-15)
 ===========================
 
@@ -92,6 +122,13 @@ Removed, inlined or renamed functions and variables:
     `notmuch-remove-if-not`, `notmuch-search-disjunctive-regexp`,
     `notmuch-sexp-eof`, `notmuch-split-content-type`, and
     `notmuch-tree-button-activate`.
+
+Keymaps are no longer fset, which means they need to be referred to in
+define-key directly (without quotes).  If your Emacs configuration has a
+keybinding like:
+   (define-key 'notmuch-show-mode-map "7" 'foo)
+you should change it to:
+   (define-key notmuch-show-mode-map "7" 'foo)
 
 Notmuch 0.31.4 (2021-02-18)
 ===========================
