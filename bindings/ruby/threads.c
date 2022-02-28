@@ -28,12 +28,7 @@
 VALUE
 notmuch_rb_threads_destroy (VALUE self)
 {
-    notmuch_threads_t *threads;
-
-    Data_Get_Struct (self, notmuch_threads_t, threads);
-
-    notmuch_threads_destroy (threads);
-    DATA_PTR (self) = NULL;
+    notmuch_rb_object_destroy (self, &notmuch_rb_threads_type);
 
     return Qnil;
 }
@@ -53,7 +48,7 @@ notmuch_rb_threads_each (VALUE self)
 
     for (; notmuch_threads_valid (threads); notmuch_threads_move_to_next (threads)) {
 	thread = notmuch_threads_get (threads);
-	rb_yield (Data_Wrap_Struct (notmuch_rb_cThread, NULL, NULL, thread));
+	rb_yield (Data_Wrap_Notmuch_Object (notmuch_rb_cThread, &notmuch_rb_thread_type, thread));
     }
 
     return self;

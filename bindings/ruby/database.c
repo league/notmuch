@@ -23,7 +23,20 @@
 VALUE
 notmuch_rb_database_alloc (VALUE klass)
 {
-    return Data_Wrap_Struct (klass, NULL, NULL, NULL);
+    return Data_Wrap_Notmuch_Object (klass, &notmuch_rb_database_type, NULL);
+}
+
+/*
+ * call-seq: DB.destroy => nil
+ *
+ * Destroys the database, freeing all resources allocated for it.
+ */
+VALUE
+notmuch_rb_database_destroy (VALUE self)
+{
+    notmuch_rb_object_destroy (self, &notmuch_rb_database_type);
+
+    return Qnil;
 }
 
 /*
@@ -74,14 +87,14 @@ notmuch_rb_database_initialize (int argc, VALUE *argv, VALUE self)
 	mode = NOTMUCH_DATABASE_MODE_READ_ONLY;
     }
 
-    Check_Type (self, T_DATA);
+    rb_check_typeddata (self, &notmuch_rb_database_type);
     if (create)
 	ret = notmuch_database_create (path, &database);
     else
 	ret = notmuch_database_open (path, mode, &database);
     notmuch_rb_status_raise (ret);
 
-    DATA_PTR (self) = database;
+    DATA_PTR (self) = notmuch_rb_object_create (database, "notmuch_rb_database");
 
     return self;
 }
@@ -113,12 +126,12 @@ notmuch_rb_database_open (int argc, VALUE *argv, VALUE klass)
 VALUE
 notmuch_rb_database_close (VALUE self)
 {
-    notmuch_status_t ret;
     notmuch_database_t *db;
+    notmuch_status_t ret;
 
     Data_Get_Notmuch_Database (self, db);
-    ret = notmuch_database_destroy (db);
-    DATA_PTR (self) = NULL;
+
+    ret = notmuch_database_close (db);
     notmuch_rb_status_raise (ret);
 
     return Qnil;
@@ -266,7 +279,7 @@ notmuch_rb_database_get_directory (VALUE self, VALUE pathv)
     ret = notmuch_database_get_directory (db, path, &dir);
     notmuch_rb_status_raise (ret);
     if (dir)
-	return Data_Wrap_Struct (notmuch_rb_cDirectory, NULL, NULL, dir);
+	return Data_Wrap_Notmuch_Object (notmuch_rb_cDirectory, &notmuch_rb_directory_type, dir);
     return Qnil;
 }
 
@@ -293,7 +306,7 @@ notmuch_rb_database_add_message (VALUE self, VALUE pathv)
 
     ret = notmuch_database_index_file (db, path, NULL, &message);
     notmuch_rb_status_raise (ret);
-    return rb_assoc_new (Data_Wrap_Struct (notmuch_rb_cMessage, NULL, NULL, message),
+    return rb_assoc_new (Data_Wrap_Notmuch_Object (notmuch_rb_cMessage, &notmuch_rb_message_type, message),
         (ret == NOTMUCH_STATUS_DUPLICATE_MESSAGE_ID) ? Qtrue : Qfalse);
 }
 
@@ -344,7 +357,7 @@ notmuch_rb_database_find_message (VALUE self, VALUE idv)
     notmuch_rb_status_raise (ret);
 
     if (message)
-        return Data_Wrap_Struct (notmuch_rb_cMessage, NULL, NULL, message);
+	return Data_Wrap_Notmuch_Object (notmuch_rb_cMessage, &notmuch_rb_message_type, message);
     return Qnil;
 }
 
@@ -370,7 +383,7 @@ notmuch_rb_database_find_message_by_filename (VALUE self, VALUE pathv)
     notmuch_rb_status_raise (ret);
 
     if (message)
-        return Data_Wrap_Struct (notmuch_rb_cMessage, NULL, NULL, message);
+	return Data_Wrap_Notmuch_Object (notmuch_rb_cMessage, &notmuch_rb_message_type, message);
     return Qnil;
 }
 
@@ -395,20 +408,27 @@ notmuch_rb_database_get_all_tags (VALUE self)
 
 	rb_raise (notmuch_rb_eBaseError, "%s", msg);
     }
-    return Data_Wrap_Struct (notmuch_rb_cTags, NULL, NULL, tags);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cTags, &notmuch_rb_tags_type, tags);
 }
 
 /*
- * call-seq: DB.query(query) => QUERY
+ * call-seq:
+ *   DB.query(query) => QUERY
+ *   DB.query(query, sort:, excluded_tags:, omit_excluded:) => QUERY
  *
- * Retrieve a query object for the query string 'query'
+ * Retrieve a query object for the query string 'query'. When using keyword
+ * arguments they are passwed to the query object.
  */
 VALUE
-notmuch_rb_database_query_create (VALUE self, VALUE qstrv)
+notmuch_rb_database_query_create (int argc, VALUE *argv, VALUE self)
 {
+    VALUE qstrv;
+    VALUE opts;
     const char *qstr;
     notmuch_query_t *query;
     notmuch_database_t *db;
+
+    rb_scan_args (argc, argv, "1:", &qstrv, &opts);
 
     Data_Get_Notmuch_Database (self, db);
 
@@ -419,5 +439,39 @@ notmuch_rb_database_query_create (VALUE self, VALUE qstrv)
     if (!query)
         rb_raise (notmuch_rb_eMemoryError, "Out of memory");
 
-    return Data_Wrap_Struct (notmuch_rb_cQuery, NULL, NULL, query);
+    if (!NIL_P (opts)) {
+	VALUE sort, exclude_tags, omit_excluded;
+	VALUE kwargs[3];
+	static ID keyword_ids[3];
+
+	if (!keyword_ids[0]) {
+	    keyword_ids[0] = rb_intern_const ("sort");
+	    keyword_ids[1] = rb_intern_const ("exclude_tags");
+	    keyword_ids[2] = rb_intern_const ("omit_excluded");
+	}
+
+	rb_get_kwargs (opts, keyword_ids, 0, 3, kwargs);
+
+	sort = kwargs[0];
+	exclude_tags = kwargs[1];
+	omit_excluded = kwargs[2];
+
+	if (sort != Qundef)
+	    notmuch_query_set_sort (query, FIX2UINT (sort));
+
+	if (exclude_tags != Qundef) {
+	    for (int i = 0; i < RARRAY_LEN (exclude_tags); i++) {
+		VALUE e = RARRAY_AREF (exclude_tags, i);
+		notmuch_query_add_tag_exclude (query, RSTRING_PTR (e));
+	    }
+	}
+
+	if (omit_excluded != Qundef) {
+	    notmuch_exclude_t omit;
+	    omit = FIXNUM_P (omit_excluded) ? FIX2UINT (omit_excluded) : RTEST(omit_excluded);
+	    notmuch_query_set_omit_excluded (query, omit);
+	}
+    }
+
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cQuery, &notmuch_rb_query_type, query);
 }

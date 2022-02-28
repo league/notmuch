@@ -4,9 +4,11 @@
 
 test_description='indexing decrypted mail'
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
 
 ##################################################
 
+test_require_emacs
 add_gnupg_home
 
 # create a test encrypted message

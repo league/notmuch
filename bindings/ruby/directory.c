@@ -28,12 +28,7 @@
 VALUE
 notmuch_rb_directory_destroy (VALUE self)
 {
-    notmuch_directory_t *dir;
-
-    Data_Get_Struct (self, notmuch_directory_t, dir);
-
-    notmuch_directory_destroy (dir);
-    DATA_PTR (self) = NULL;
+    notmuch_rb_object_destroy (self, &notmuch_rb_directory_type);
 
     return Qnil;
 }
@@ -92,7 +87,7 @@ notmuch_rb_directory_get_child_files (VALUE self)
 
     fnames = notmuch_directory_get_child_files (dir);
 
-    return Data_Wrap_Struct (notmuch_rb_cFileNames, NULL, NULL, fnames);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cFileNames, &notmuch_rb_filenames_type, fnames);
 }
 
 /*
@@ -111,5 +106,5 @@ notmuch_rb_directory_get_child_directories (VALUE self)
 
     fnames = notmuch_directory_get_child_directories (dir);
 
-    return Data_Wrap_Struct (notmuch_rb_cFileNames, NULL, NULL, fnames);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cFileNames, &notmuch_rb_filenames_type, fnames);
 }

@@ -2,7 +2,9 @@
 
 test_description='S/MIME signature verification and decryption'
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
 
+test_require_emacs
 test_require_external_prereq openssl
 test_require_external_prereq gpgsm
 
@@ -44,7 +46,7 @@ expected='[[[{"id": "XXXXX",
  "timestamp": 946728000,
  "date_relative": "2000-01-01",
  "tags": ["inbox","signed"],
- "crypto": {"signed": {"status": [{"fingerprint": "'$FINGERPRINT'", "status": "good","userid": "CN=Notmuch Test Suite","expires": 424242424, "created": 946728000}]}},
+ "crypto": {"signed": {"status": [{"fingerprint": "'$FINGERPRINT'", "status": "good","userid": "CN=Notmuch Test Suite", "email": "<test_suite@notmuchmail.org>", "expires": 424242424, "created": 946728000}]}},
  "headers": {"Subject": "test signed message 001",
  "From": "Notmuch Test Suite <test_suite@notmuchmail.org>",
  "To": "test_suite@notmuchmail.org",
@@ -53,6 +55,7 @@ expected='[[[{"id": "XXXXX",
  "sigstatus": [{"fingerprint": "'$FINGERPRINT'",
  "status": "good",
  "userid": "CN=Notmuch Test Suite",
+ "email": "<test_suite@notmuchmail.org>",
  "expires": 424242424,
  "created": 946728000}],
  "content-type": "multipart/signed",

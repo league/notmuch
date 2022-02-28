@@ -8,95 +8,96 @@ fi
 
 add_email_corpus
 
+test_ruby() {
+    (
+	cat <<-EOF
+	require 'notmuch'
+	db = Notmuch::Database.new('$MAIL_DIR')
+	EOF
+	cat
+    ) | $NOTMUCH_RUBY -I "$NOTMUCH_BUILDDIR/bindings/ruby"> OUTPUT
+    test_expect_equal_file EXPECTED OUTPUT
+}
+
 test_begin_subtest "compare thread ids"
+notmuch search --sort=oldest-first --output=threads tag:inbox > EXPECTED
 test_ruby <<"EOF"
-require 'notmuch'
-$maildir = ENV['MAIL_DIR']
-if not $maildir then
-  abort('environment variable MAIL_DIR must be set')
-end
-@db = Notmuch::Database.new($maildir)
-@q = @db.query('tag:inbox')
-@q.sort = Notmuch::SORT_OLDEST_FIRST
-for t in @q.search_threads do
-  print t.thread_id, "\n"
+q = db.query('tag:inbox')
+q.sort = Notmuch::SORT_OLDEST_FIRST
+q.search_threads.each do |t|
+  puts 'thread:%s' % t.thread_id
 end
 EOF
-notmuch search --sort=oldest-first --output=threads tag:inbox | sed s/^thread:// > EXPECTED
-test_expect_equal_file EXPECTED OUTPUT
 
 test_begin_subtest "compare message ids"
+notmuch search --sort=oldest-first --output=messages tag:inbox > EXPECTED
 test_ruby <<"EOF"
-require 'notmuch'
-$maildir = ENV['MAIL_DIR']
-if not $maildir then
-  abort('environment variable MAIL_DIR must be set')
-end
-@db = Notmuch::Database.new($maildir)
-@q = @db.query('tag:inbox')
-@q.sort = Notmuch::SORT_OLDEST_FIRST
-for m in @q.search_messages do
-  print m.message_id, "\n"
+q = db.query('tag:inbox')
+q.sort = Notmuch::SORT_OLDEST_FIRST
+q.search_messages.each do |m|
+  puts 'id:%s' % m.message_id
 end
 EOF
-notmuch search --sort=oldest-first --output=messages tag:inbox | sed s/^id:// > EXPECTED
-test_expect_equal_file EXPECTED OUTPUT
 
 test_begin_subtest "get non-existent file"
+echo nil > EXPECTED
 test_ruby <<"EOF"
-require 'notmuch'
-$maildir = ENV['MAIL_DIR']
-if not $maildir then
-  abort('environment variable MAIL_DIR must be set')
-end
-@db = Notmuch::Database.new($maildir)
-result = @db.find_message_by_filename('i-dont-exist')
-print (result == nil)
+p db.find_message_by_filename('i-dont-exist')
 EOF
-test_expect_equal "$(cat OUTPUT)" "true"
 
 test_begin_subtest "count messages"
-test_ruby <<"EOF"
-require 'notmuch'
-$maildir = ENV['MAIL_DIR']
-if not $maildir then
-  abort('environment variable MAIL_DIR must be set')
-end
-@db = Notmuch::Database.new($maildir)
-@q = @db.query('tag:inbox')
-print @q.count_messages(),"\n"
-EOF
 notmuch count --output=messages tag:inbox > EXPECTED
-test_expect_equal_file EXPECTED OUTPUT
+test_ruby <<"EOF"
+puts db.query('tag:inbox').count_messages()
+EOF
 
 test_begin_subtest "count threads"
-test_ruby <<"EOF"
-require 'notmuch'
-$maildir = ENV['MAIL_DIR']
-if not $maildir then
-  abort('environment variable MAIL_DIR must be set')
-end
-@db = Notmuch::Database.new($maildir)
-@q = @db.query('tag:inbox')
-print @q.count_threads(),"\n"
-EOF
 notmuch count --output=threads tag:inbox > EXPECTED
-test_expect_equal_file EXPECTED OUTPUT
+test_ruby <<"EOF"
+puts db.query('tag:inbox').count_threads()
+EOF
 
 test_begin_subtest "get all tags"
+notmuch search --output=tags '*' > EXPECTED
 test_ruby <<"EOF"
-require 'notmuch'
-$maildir = ENV['MAIL_DIR']
-if not $maildir then
-  abort('environment variable MAIL_DIR must be set')
-end
-@db = Notmuch::Database.new($maildir)
-@t = @db.all_tags()
-for tag in @t do
-   print tag,"\n"
+db.all_tags.each do |tag|
+  puts tag
 end
 EOF
-notmuch search --output=tags '*' > EXPECTED
-test_expect_equal_file EXPECTED OUTPUT
+
+notmuch config set search.exclude_tags deleted
+generate_message '[subject]="Good"'
+generate_message '[subject]="Bad"' "[in-reply-to]=\<$gen_msg_id\>"
+notmuch new > /dev/null
+notmuch tag +deleted id:$gen_msg_id
+
+test_begin_subtest "omit excluded all"
+notmuch search --output=threads --exclude=all tag:inbox > EXPECTED
+test_ruby <<"EOF"
+q = db.query('tag:inbox')
+q.add_tag_exclude('deleted')
+q.omit_excluded = Notmuch::EXCLUDE_ALL
+q.search_threads.each do |t|
+  puts 'thread:%s' % t.thread_id
+end
+EOF
+
+test_begin_subtest "check sort argument"
+notmuch search --sort=oldest-first --output=threads tag:inbox > EXPECTED
+test_ruby <<"EOF"
+q = db.query('tag:inbox', sort: Notmuch::SORT_OLDEST_FIRST)
+q.search_threads.each do |t|
+  puts 'thread:%s' % t.thread_id
+end
+EOF
+
+test_begin_subtest "check exclude_tags argument"
+notmuch search --output=threads --exclude=all tag:inbox > EXPECTED
+test_ruby <<"EOF"
+q = db.query('tag:inbox', exclude_tags: %w[deleted], omit_excluded: Notmuch::EXCLUDE_ALL)
+q.search_threads.each do |t|
+  puts 'thread:%s' % t.thread_id
+end
+EOF
 
 test_done

@@ -246,7 +246,7 @@ _choose_database_path (void *ctx,
     return NOTMUCH_STATUS_SUCCESS;
 }
 
-notmuch_database_t *
+static notmuch_database_t *
 _alloc_notmuch ()
 {
     notmuch_database_t *notmuch;
@@ -260,6 +260,8 @@ _alloc_notmuch ()
     notmuch->writable_xapian_db = NULL;
     notmuch->config_path = NULL;
     notmuch->atomic_nesting = 0;
+    notmuch->transaction_count = 0;
+    notmuch->transaction_threshold = 0;
     notmuch->view = 1;
     return notmuch;
 }
@@ -329,24 +331,6 @@ _set_database_path (notmuch_database_t *notmuch,
 }
 
 static void
-_init_libs ()
-{
-
-    static int initialized = 0;
-
-    /* Initialize the GLib type system and threads */
-#if ! GLIB_CHECK_VERSION (2, 35, 1)
-    g_type_init ();
-#endif
-
-    /* Initialize gmime */
-    if (! initialized) {
-	g_mime_init ();
-	initialized = 1;
-    }
-}
-
-static void
 _load_database_state (notmuch_database_t *notmuch)
 {
     std::string last_thread_id;
@@ -387,6 +371,8 @@ _finish_open (notmuch_database_t *notmuch,
     notmuch_status_t status = NOTMUCH_STATUS_SUCCESS;
     char *incompat_features;
     char *message = NULL;
+    const char *autocommit_str;
+    char *autocommit_end;
     unsigned int version;
     const char *database_path = notmuch_database_get_path (notmuch);
 
@@ -483,6 +469,14 @@ _finish_open (notmuch_database_t *notmuch,
 	if (status)
 	    goto DONE;
 
+	autocommit_str = notmuch_config_get (notmuch, NOTMUCH_CONFIG_AUTOCOMMIT);
+	if (unlikely (! autocommit_str)) {
+	    INTERNAL_ERROR ("missing configuration for autocommit");
+	}
+	notmuch->transaction_threshold = strtoul (autocommit_str, &autocommit_end, 10);
+	if (*autocommit_end != '\0')
+	    INTERNAL_ERROR ("Malformed database database.autocommit value: %s", autocommit_str);
+
 	status = _notmuch_database_setup_standard_query_fields (notmuch);
 	if (status)
 	    goto DONE;
@@ -519,7 +513,7 @@ notmuch_database_open_with_config (const char *database_path,
     GKeyFile *key_file = NULL;
     bool split = false;
 
-    _init_libs ();
+    _notmuch_init ();
 
     notmuch = _alloc_notmuch ();
     if (! notmuch) {
@@ -616,7 +610,7 @@ notmuch_database_create_with_config (const char *database_path,
     int err;
     bool split = false;
 
-    _init_libs ();
+    _notmuch_init ();
 
     notmuch = _alloc_notmuch ();
     if (! notmuch) {
@@ -777,7 +771,7 @@ notmuch_database_reopen (notmuch_database_t *notmuch,
     return NOTMUCH_STATUS_SUCCESS;
 }
 
-notmuch_status_t
+static notmuch_status_t
 _maybe_load_config_from_database (notmuch_database_t *notmuch,
 				  GKeyFile *key_file,
 				  const char *database_path,
@@ -812,7 +806,7 @@ notmuch_database_load_config (const char *database_path,
     GKeyFile *key_file = NULL;
     bool split = false;
 
-    _init_libs ();
+    _notmuch_init ();
 
     notmuch = _alloc_notmuch ();
     if (! notmuch) {

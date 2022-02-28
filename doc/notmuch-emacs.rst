@@ -299,11 +299,25 @@ tags.
 ``p``
     Move to previous matching message
 
+``o`` ``notmuch-tree-toggle-order``
+   |docstring::notmuch-tree-toggle-order|
+
+``l`` ``notmuch-tree-filter``
+   Filter or LIMIT the current search results based on an additional query string
+
+``t`` ``notmuch-tree-filter-by-tag``
+   Filter the current search results based on an additional tag
+
+
 ``g`` ``=``
     Refresh the buffer
 
 ``?``
     Display full set of key bindings
+
+As is the case with :ref:`notmuch-search`, the presentation of results
+can be controlled by the variable ``notmuch-search-oldest-first``.
+
 
 Global key bindings
 ===================
@@ -365,6 +379,16 @@ Importing Mail
 
 :index:`notmuch-poll-script`
    |docstring::notmuch-poll-script|
+
+Sending Mail
+------------
+
+:index:`mail-user-agent`
+
+       Emacs consults the variable :code:`mail-user-agent` to choose a mail
+       sending package for commands like :code:`report-emacs-bug` and
+       :code:`compose-mail`.  To use ``notmuch`` for this, customize this
+       variable to the symbol :code:`notmuch-user-agent`.
 
 Init File
 ---------

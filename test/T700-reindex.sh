@@ -6,8 +6,8 @@ add_email_corpus
 
 notmuch tag +usertag1 '*'
 
-notmuch search '*' | notmuch_search_sanitize > initial-threads
-notmuch search --output=messages '*' > initial-message-ids
+notmuch search '*' 2>1 | notmuch_search_sanitize > initial-threads
+notmuch search --output=messages '*' 2>/dev/null > initial-message-ids
 notmuch dump > initial-dump
 
 test_begin_subtest 'reindex preserves threads'
@@ -82,5 +82,12 @@ notmuch search '*' | notmuch_search_sanitize > EXPECTED
 notmuch reindex '*'
 notmuch search '*' | notmuch_search_sanitize > OUTPUT
 test_expect_equal_file EXPECTED OUTPUT
+
+
+test_begin_subtest "reindex after removing corpus"
+tar cf backup.tar mail/cur
+find mail/cur -type f -delete
+test_expect_success "notmuch reindex '*'"
+tar xf backup.tar
 
 test_done

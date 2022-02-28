@@ -1,3 +1,5 @@
+.. _notmuch-tag(1):
+
 ===========
 notmuch-tag
 ===========
@@ -14,7 +16,7 @@ DESCRIPTION
 
 Add/remove tags for all messages matching the search terms.
 
-See **notmuch-search-terms(7)** for details of the supported syntax for
+See :any:`notmuch-search-terms(7)` for details of the supported syntax for
 <*search-term*\ >.
 
 Tags prefixed by '+' are added while those prefixed by '-' are removed.
@@ -28,26 +30,31 @@ beginning with '+' or '-' is provided by allowing the user to specify a
 
 **notmuch tag** updates the maildir flags according to tag changes if
 the **maildir.synchronize\_flags** configuration option is enabled. See
-**notmuch-config(1)** for details.
+:any:`notmuch-config(1)` for details.
 
 Supported options for **tag** include
 
-``--remove-all``
-    Remove all tags from each message matching the search terms before
-    applying the tag changes appearing on the command line.  This
-    means setting the tags of each message to the tags to be added. If
-    there are no tags to be added, the messages will have no tags.
+.. program:: tag
 
-``--batch``
-    Read batch tagging operations from a file (stdin by default).
-    This is more efficient than repeated **notmuch tag**
-    invocations. See `TAG FILE FORMAT <#tag_file_format>`__ below for
-    the input format. This option is not compatible with specifying
-    tagging on the command line.
+.. option:: --remove-all
 
-``--input=``\ <filename>
-    Read input from given file, instead of from stdin. Implies
-    ``--batch``.
+   Remove all tags from each message matching the search terms before
+   applying the tag changes appearing on the command line.  This
+   means setting the tags of each message to the tags to be added. If
+   there are no tags to be added, the messages will have no tags.
+
+.. option:: --batch
+
+   Read batch tagging operations from a file (stdin by default).
+   This is more efficient than repeated **notmuch tag**
+   invocations. See `TAG FILE FORMAT <#tag_file_format>`__ below for
+   the input format. This option is not compatible with specifying
+   tagging on the command line.
+
+.. option:: --input=<filename>
+
+   Read input from given file, instead of from stdin. Implies
+   ``--batch``.
 
 TAG FILE FORMAT
 ===============
@@ -100,15 +107,15 @@ of the tag **space in tags**
 SEE ALSO
 ========
 
-**notmuch(1)**,
-**notmuch-config(1)**,
-**notmuch-count(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-insert(1)**,
-**notmuch-new(1)**,
-**notmuch-reply(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
+:any:`notmuch(1)`,
+:any:`notmuch-config(1)`,
+:any:`notmuch-count(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-insert(1)`,
+:any:`notmuch-new(1)`,
+:any:`notmuch-reply(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,

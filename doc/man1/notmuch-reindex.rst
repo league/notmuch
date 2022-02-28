@@ -1,3 +1,5 @@
+.. _notmuch-reindex(1):
+
 ===============
 notmuch-reindex
 ===============
@@ -12,7 +14,7 @@ DESCRIPTION
 
 Re-index all messages matching the search terms.
 
-See **notmuch-search-terms(7)** for details of the supported syntax for
+See :any:`notmuch-search-terms(7)` for details of the supported syntax for
 <*search-term*\ >.
 
 The **reindex** command searches for all messages matching the
@@ -21,28 +23,31 @@ messages using the supplied options.
 
 Supported options for **reindex** include
 
-``--decrypt=(true|nostash|auto|false)``
-    If ``true``, when encountering an encrypted message, try to
-    decrypt it while reindexing, stashing any session keys discovered.
-    If ``auto``, and notmuch already knows about a session key for the
-    message, it will try decrypting using that session key but will
-    not try to access the user's secret keys.  If decryption is
-    successful, index the cleartext itself.
+.. program:: reindex
 
-    ``nostash`` is the same as ``true`` except that it will not stash
-    newly-discovered session keys in the database.
+.. option:: --decrypt=(true|nostash|auto|false)
 
-    If ``false``, notmuch reindex will also delete any stashed session
-    keys for all messages matching the search terms.
+   If ``true``, when encountering an encrypted message, try to
+   decrypt it while reindexing, stashing any session keys discovered.
+   If ``auto``, and notmuch already knows about a session key for the
+   message, it will try decrypting using that session key but will
+   not try to access the user's secret keys.  If decryption is
+   successful, index the cleartext itself.
 
-    Be aware that the index is likely sufficient (and a stashed
-    session key is certainly sufficient) to reconstruct the cleartext
-    of the message itself, so please ensure that the notmuch message
-    index is adequately protected. DO NOT USE ``--decrypt=true`` or
-    ``--decrypt=nostash`` without considering the security of your
-    index.
+   ``nostash`` is the same as ``true`` except that it will not stash
+   newly-discovered session keys in the database.
 
-    See also ``index.decrypt`` in **notmuch-config(1)**.
+   If ``false``, notmuch reindex will also delete any stashed session
+   keys for all messages matching the search terms.
+
+   Be aware that the index is likely sufficient (and a stashed
+   session key is certainly sufficient) to reconstruct the cleartext
+   of the message itself, so please ensure that the notmuch message
+   index is adequately protected. DO NOT USE ``--decrypt=true`` or
+   ``--decrypt=nostash`` without considering the security of your
+   index.
+
+   See also ``index.decrypt`` in :any:`notmuch-config(1)`.
 
 EXAMPLES
 ========
@@ -84,17 +89,17 @@ https://trac.xapian.org/ticket/742:
 SEE ALSO
 ========
 
-**notmuch(1)**,
-**notmuch-compact(1)**,
-**notmuch-config(1)**,
-**notmuch-count(1)**,
-**notmuch-dump(1)**,
-**notmuch-hooks(5)**,
-**notmuch-insert(1)**,
-**notmuch-new(1)**,
-**notmuch-reply(1)**,
-**notmuch-restore(1)**,
-**notmuch-search(1)**,
-**notmuch-search-terms(7)**,
-**notmuch-show(1)**,
-**notmuch-tag(1)**
+:any:`notmuch(1)`,
+:any:`notmuch-compact(1)`,
+:any:`notmuch-config(1)`,
+:any:`notmuch-count(1)`,
+:any:`notmuch-dump(1)`,
+:any:`notmuch-hooks(5)`,
+:any:`notmuch-insert(1)`,
+:any:`notmuch-new(1)`,
+:any:`notmuch-reply(1)`,
+:any:`notmuch-restore(1)`,
+:any:`notmuch-search(1)`,
+:any:`notmuch-search-terms(7)`,
+:any:`notmuch-show(1)`,
+:any:`notmuch-tag(1)`

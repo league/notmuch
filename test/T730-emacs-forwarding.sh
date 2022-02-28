@@ -2,6 +2,9 @@
 
 test_description="emacs forwarding"
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
+
+test_require_emacs
 
 test_begin_subtest "Forward setting the correct references header"
 # Check that, when forwarding a message, the new message has

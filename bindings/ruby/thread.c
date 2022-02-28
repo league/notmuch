@@ -28,12 +28,7 @@
 VALUE
 notmuch_rb_thread_destroy (VALUE self)
 {
-    notmuch_thread_t *thread;
-
-    Data_Get_Notmuch_Thread (self, thread);
-
-    notmuch_thread_destroy (thread);
-    DATA_PTR (self) = NULL;
+    notmuch_rb_object_destroy (self, &notmuch_rb_thread_type);
 
     return Qnil;
 }
@@ -88,7 +83,7 @@ notmuch_rb_thread_get_toplevel_messages (VALUE self)
     if (!messages)
 	rb_raise (notmuch_rb_eMemoryError, "Out of memory");
 
-    return Data_Wrap_Struct (notmuch_rb_cMessages, NULL, NULL, messages);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cMessages, &notmuch_rb_messages_type, messages);
 }
 
 /*
@@ -108,7 +103,7 @@ notmuch_rb_thread_get_messages (VALUE self)
     if (!messages)
 	rb_raise (notmuch_rb_eMemoryError, "Out of memory");
 
-    return Data_Wrap_Struct (notmuch_rb_cMessages, NULL, NULL, messages);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cMessages, &notmuch_rb_messages_type, messages);
 }
 
 /*
@@ -209,5 +204,5 @@ notmuch_rb_thread_get_tags (VALUE self)
     if (!tags)
 	rb_raise (notmuch_rb_eMemoryError, "Out of memory");
 
-    return Data_Wrap_Struct (notmuch_rb_cTags, NULL, NULL, tags);
+    return Data_Wrap_Notmuch_Object (notmuch_rb_cTags, &notmuch_rb_tags_type, tags);
 }

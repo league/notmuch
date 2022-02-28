@@ -6,9 +6,11 @@
 
 test_description='PGP/MIME signature verification and decryption'
 . $(dirname "$0")/test-lib.sh || exit 1
+. $NOTMUCH_SRCDIR/test/test-lib-emacs.sh || exit 1
 
 ##################################################
 
+test_require_emacs
 add_gnupg_home
 
 test_begin_subtest "emacs delivery of signed message"
@@ -33,7 +35,7 @@ expected='[[[{"id": "XXXXX",
  "timestamp": 946728000,
  "date_relative": "2000-01-01",
  "tags": ["inbox","signed"],
- "crypto": {"signed": {"status": [{ "status": "good", "created": 946728000, "fingerprint": "'$FINGERPRINT'", "userid": "'"$SELF_USERID"'"}]}},
+ "crypto": {"signed": {"status": [{ "status": "good", "created": 946728000, "email": "'"$SELF_EMAIL"'", "fingerprint": "'$FINGERPRINT'", "userid": "'"$SELF_USERID"'"}]}},
  "headers": {"Subject": "test signed message 001",
  "From": "Notmuch Test Suite <test_suite@notmuchmail.org>",
  "To": "test_suite@notmuchmail.org",
@@ -42,6 +44,7 @@ expected='[[[{"id": "XXXXX",
  "sigstatus": [{"status": "good",
  "fingerprint": "'$FINGERPRINT'",
  "created": 946728000,
+ "email": "'"$SELF_EMAIL"'",
  "userid": "'"$SELF_USERID"'"}],
  "content-type": "multipart/signed",
  "content": [{"id": 2,
@@ -365,7 +368,7 @@ expected='[[[{"id": "XXXXX",
  "timestamp": 946728000,
  "date_relative": "2000-01-01",
  "tags": ["encrypted","inbox"],
- "crypto": {"signed": {"status": [{ "status": "good", "created": 946728000, "fingerprint": "'$FINGERPRINT'", "userid": "'"$SELF_USERID"'"}],
+ "crypto": {"signed": {"status": [{ "status": "good", "created": 946728000, "fingerprint": "'$FINGERPRINT'", "email": "'"$SELF_EMAIL"'", "userid": "'"$SELF_USERID"'"}],
                        "encrypted": true },
             "decrypted": {"status": "full"}},
  "headers": {"Subject": "test encrypted message 002",
@@ -377,6 +380,7 @@ expected='[[[{"id": "XXXXX",
  "sigstatus": [{"status": "good",
  "fingerprint": "'$FINGERPRINT'",
  "created": 946728000,
+ "email": "'"$SELF_EMAIL"'",
  "userid": "'"$SELF_USERID"'"}],
  "content-type": "multipart/encrypted",
  "content": [{"id": 2,

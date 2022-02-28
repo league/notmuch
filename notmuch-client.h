@@ -137,7 +137,7 @@ chomp_newline (char *str)
  * this.  New (required) map fields can be added without increasing
  * this.
  */
-#define NOTMUCH_FORMAT_CUR 4
+#define NOTMUCH_FORMAT_CUR 5
 /* The minimum supported structured output format version.  Requests
  * for format versions below this will return an error. */
 #define NOTMUCH_FORMAT_MIN 1
@@ -249,6 +249,10 @@ json_quote_chararray (const void *ctx, const char *str, const size_t len);
 
 char *
 json_quote_str (const void *ctx, const char *str);
+
+/* notmuch-client-init.c */
+
+void notmuch_client_init (void);
 
 /* notmuch-config.c */
 
