@@ -3,14 +3,24 @@ name: "Build"
 "on":
   pull_request:
   push:
-    branches:
-      - nix
-      - sort
   schedule:
     # Weekly
     - cron: '0 15 * * FRI'
 jobs:
+  # Avoid re-running workflow for the same commit.
+  # https://github.community/t/avoid-re-running-wokflow-for-the-same-commit/188236/2
+  prebuild:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v3.4.1
+        with:
+          skip_after_successful_duplicate: 'true'
   build:
+    needs: prebuild
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
