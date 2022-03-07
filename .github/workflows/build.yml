@@ -26,12 +26,10 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         # Currently some crypto-related test failures on
         # ‘nixpkgs-unstable’ or I’d test that too.
-        nixpkgs: ["pinned"]
-        pre-commit-hooks: ["pinned"]
-        include:
-          - nixpkgs: release-21.11
-          - nixpkgs: release-21.05
-            pre-commit-hooks: ff9c0b459ddc4b79c06e19d44251daa8e9cd1746
+        nixpkgs:
+          - "true"
+          - "nxp=release-21.11"
+          - "nxp=release-21.05;pch=ff9c0b459ddc4b79c06e19d44251daa8e9cd1746"
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -41,13 +39,15 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - run: |
-          if [[ "${{ matrix.nixpkgs }}" != "pinned" ]]; then
-            nix flake lock --override-input nixpkgs \
-              "nixpkgs/${{ matrix.nixpkgs }}"
+          nxp=""
+          pch=""
+          eval "${{ matrix.nixpkgs }}"
+          if [[ "$nxp" != "" ]]; then
+            nix flake lock --override-input nixpkgs "nixpkgs/$nxp"
           fi
-          if [[ "${{ matrix.pre-commit-hooks }}" != "pinned" ]]; then
+          if [[ "$pch" != "" ]]; then
             nix flake lock --override-input pre-commit-hooks \
-            "github:cachix/pre-commit-hooks.nix/${{ matrix.pre-commit-hooks }}"
+              "github:cachix/pre-commit-hooks.nix/$pch"
           fi
       - run: nix flake metadata
       - run: nix flake check
