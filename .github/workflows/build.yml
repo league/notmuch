@@ -26,7 +26,14 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         # Currently some crypto-related test failures on
         # ‘nixpkgs-unstable’ or I’d test that too.
-        nixpkgs: ["pinned", "release-21.11", "release-21.05"]
+        include:
+          - nixpkgs: pinned
+            pre-commit-hooks: pinned
+          - nixpkgs: release-21.11
+            pre-commit-hooks: pinned
+          - nixpkgs: release-21.05
+            pre-commit-hooks: ff9c0b459ddc4b79c06e19d44251daa8e9cd1746
+      fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2.4.0
@@ -35,19 +42,14 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - run: |
-          if [[ "${{ matrix.nixpkgs }}" == "pinned" ]]; then
-              nix flake metadata
-          elif [[ "${{ matrix.nixpkgs }}" == "release-21.05" ]]; then
-              # The very latest pre-commit-hooks references a package
-              # (statix) not in nixpkgs 21.05, and we want the hooks’
-              # nixpkgs follow ours. So specify slightly older commit.
-              nix flake update \
-                  --override-input nixpkgs "nixpkgs/${{ matrix.nixpkgs }}" \
-                  --override-input pre-commit-hooks \
-                  "github:cachix/pre-commit-hooks.nix/ff9c0b459ddc4b79c06e19d44251daa8e9cd1746"
-          else
-              nix flake update \
-                  --override-input nixpkgs "nixpkgs/${{ matrix.nixpkgs }}"
+          if [[ "${{ matrix.nixpkgs }}" != "pinned" ]]; then
+            nix flake lock --override-input nixpkgs \
+              "nixpkgs/${{ matrix.nixpkgs }}"
           fi
+          if [[ "${{ matrix.pre-commit-hooks }}" != "pinned" ]]; then
+            nix flake lock --override-input pre-commit-hooks \
+            "github:cachix/pre-commit-hooks.nix/${{ matrix.pre-commit-hooks }}"
+          fi
+      - run: nix flake metadata
       - run: nix flake check
       - run: nix build --print-build-logs .#notmuch.{out,emacs,man,info}
