@@ -56,7 +56,7 @@ notmuch-hello key bindings
 ``<tab>``
     Move to the next widget (button or text entry field)
 
-``<backspace>``
+``<backtab>``
     Move to the previous widget.
 
 ``<return>``
@@ -175,6 +175,16 @@ variables.
 :index:`notmuch-search-sort-order`
     Defines the default sort order for displaying search results.
 
+It is also possible to customize how the name of buffers containing
+search results is formatted using the following variables:
+
+:index:`notmuch-search-buffer-name-format`
+       |docstring::notmuch-search-buffer-name-format|
+
+:index:`notmuch-saved-search-buffer-name-format`
+       |docstring::notmuch-saved-search-buffer-name-format|
+
+
 .. _notmuch-show:
 
 notmuch-show
@@ -221,6 +231,9 @@ Display of messages can be controlled by the following variables
 
 :index:`notmuch-message-headers-visible`
        |docstring::notmuch-message-headers-visible|
+
+:index:`notmuch-show-header-line`
+       |docstring::notmuch-show-header-line|
 
 .. _show-copy:
 

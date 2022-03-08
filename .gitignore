@@ -18,6 +18,7 @@
 /sh.config
 /sphinx.config
 /version.stamp
+/bindings/python-cffi/_notmuch_config.py
 TAGS
 tags
 /.direnv/
