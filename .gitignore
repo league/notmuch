@@ -8,6 +8,8 @@
 /.stamps
 /Makefile.config
 /bindings/python-cffi/build/
+/bindings/python-cffi/__pycache__/
+/bindings/python-cffi/_notmuch_config.py
 /lib/libnotmuch*.dylib
 /lib/libnotmuch.so*
 /notmuch
@@ -21,3 +23,5 @@ tags
 /.direnv/
 /.envrc
 /.pre-commit-config.yaml
+/result
+/result-*
