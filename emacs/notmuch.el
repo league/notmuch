@@ -981,7 +981,7 @@ PROMPT is the string to prompt with."
 If QUERY is nil, it is read interactively from the minibuffer.
 Other optional parameters are used as follows:
 
-  OLDEST-FIRST: A Boolean controlling the sort order of returned threads
+  SORT-ORDER: A symbol controlling the sort order of returned threads
   TARGET-THREAD: A thread ID (without the thread: prefix) that will be made
                  current if it appears in the search results.
   TARGET-LINE: The line number to move to if the target thread does not
@@ -1066,23 +1066,10 @@ same relative position within the new buffer."
   "Toggle the current search order.
 
 This command toggles the sort order for the current search. The
-default sort order is defined by `notmuch-search-oldest-first'."
+default sort order is defined by `notmuch-search-sort-order'."
   (interactive)
   (setq notmuch-search-sort-order
-	(cond
-	 ((eq 'from-ascending notmuch-search-sort-order)
-	  'from-descending)
-	 ((eq 'from-descending notmuch-search-sort-order)
-	  'from-ascending)
-	 ((eq 'subject-ascending notmuch-search-sort-order)
-	  'subject-descending)
-	 ((eq 'subject-descending notmuch-search-sort-order)
-	  'subject-ascending)
-	 ((eq 'oldest-first notmuch-search-sort-order)
-	  'newest-first)
-	 ((eq 'newest-first notmuch-search-sort-order)
-	  'oldest-first)
-	 (t 'oldest-first)))
+	(notmuch-reverse-sort-order notmuch-search-sort-order))
   (notmuch-search-refresh-view))
 
 (defun notmuch-group-disjunctive-query-string (query-string)

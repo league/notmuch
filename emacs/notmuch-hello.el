@@ -486,7 +486,7 @@ diagonal."
    (tree
     (notmuch-tree (widget-get widget :notmuch-search-terms)
 		  nil nil nil nil nil nil
-		  (widget-get widget :notmuch-search-oldest-first)))
+		  (widget-get widget :notmuch-search-sort-order)))
    (unthreaded
     (notmuch-unthreaded (widget-get widget :notmuch-search-terms)))
    (t

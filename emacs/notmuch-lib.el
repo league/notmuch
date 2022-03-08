@@ -95,15 +95,28 @@ $PATH)."
   :group 'notmuch-external)
 
 (defcustom notmuch-search-sort-order 'oldest-first
-  "Show the oldest mail first when searching.
+  "Default sort order for displaying search results.
 
-This variable defines the default sort order for displaying
-search results. Note that any filtered searches created by
-`notmuch-search-filter' retain the search order of the parent
-search."
-  :type 'symbol
+Note that any filtered searches created by `notmuch-search-filter'
+retain the search order of the parent search."
+  :type '(choice (const oldest-first)
+		 (const newest-first)
+		 (const from-ascending)
+		 (const from-descending)
+		 (const subject-ascending)
+		 (const subject-descending))
   :group 'notmuch-search)
 (make-variable-buffer-local 'notmuch-search-sort-order)
+
+(defun notmuch-reverse-sort-order (sort-order)
+  "Reverse the given SORT-ORDER."
+  (cl-case sort-order
+    ((oldest-first) 'newest-first)
+    ((newest-first) 'oldest-first)
+    ((from-ascending) 'from-descending)
+    ((from-descending) 'from-ascending)
+    ((subject-ascending) 'subject-descending)
+    ((subject-descending) 'subject-ascending)))
 
 (defcustom notmuch-poll-script nil
   "[Deprecated] Command to run to incorporate new mail into the notmuch database.

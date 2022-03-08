@@ -172,8 +172,8 @@ variables.
     Control how each thread of messages is presented in the
     ``notmuch-show-mode`` buffer
 
-:index:`notmuch-search-oldest-first`
-    Display the oldest threads at the top of the buffer
+:index:`notmuch-search-sort-order`
+    Defines the default sort order for displaying search results.
 
 .. _notmuch-show:
 
@@ -316,7 +316,7 @@ tags.
     Display full set of key bindings
 
 As is the case with :ref:`notmuch-search`, the presentation of results
-can be controlled by the variable ``notmuch-search-oldest-first``.
+can be controlled by the variable ``notmuch-search-sort-order``.
 
 
 Global key bindings

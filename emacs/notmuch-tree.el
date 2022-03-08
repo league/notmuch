@@ -755,7 +755,7 @@ nil otherwise."
 			 target
 			 nil
 			 unthreaded
-			 notmuch-search-oldest-first)))
+			 notmuch-search-sort-order)))
 
 (defun notmuch-tree-thread-top ()
   (when (notmuch-tree-get-message-properties)
@@ -1069,7 +1069,7 @@ Complete list of currently available key bindings:
 					 results-buf)))))
 
 (defun notmuch-tree-worker (basic-query &optional query-context target
-					open-target unthreaded oldest-first)
+					open-target unthreaded sort-order)
   "Insert the tree view of the search in the current buffer.
 
 This is is a helper function for notmuch-tree. The arguments are
@@ -1077,7 +1077,7 @@ the same as for the function notmuch-tree."
   (interactive)
   (notmuch-tree-mode)
   (add-hook 'post-command-hook #'notmuch-tree-command-hook t t)
-  (setq notmuch-search-oldest-first oldest-first)
+  (setq notmuch-search-sort-order sort-order)
   (setq notmuch-tree-unthreaded unthreaded)
   (setq notmuch-tree-basic-query basic-query)
   (setq notmuch-tree-query-context (if (or (string= query-context "")
@@ -1096,7 +1096,7 @@ the same as for the function notmuch-tree."
   (let* ((search-args (concat basic-query
 			      (and query-context
 				   (concat " and (" query-context ")"))))
-	 (sort-arg (if oldest-first "--sort=oldest-first" "--sort=newest-first"))
+	 (sort-arg (concat "--sort=" (symbol-name (or sort-order 'newest-first))))
 	 (message-arg (if unthreaded "--unthreaded" "--entire-thread")))
     (when (equal (car (process-lines notmuch-command "count" search-args)) "0")
       (setq search-args basic-query))
@@ -1126,13 +1126,14 @@ the same as for the function notmuch-tree."
   "Toggle the current search order.
 
 This command toggles the sort order for the current search. The
-default sort order is defined by `notmuch-search-oldest-first'."
+default sort order is defined by `notmuch-search-sort-order'."
   (interactive)
-  (setq notmuch-search-oldest-first (not notmuch-search-oldest-first))
+  (setq notmuch-search-sort-order
+	(notmuch-reverse-sort-order notmuch-search-sort-order))
   (notmuch-tree-refresh-view))
 
 (defun notmuch-tree (&optional query query-context target buffer-name
-			       open-target unthreaded parent-buffer oldest-first)
+			       open-target unthreaded parent-buffer sort-order)
   "Display threads matching QUERY in tree view.
 
 The arguments are:
@@ -1161,7 +1162,7 @@ The arguments are:
     (pop-to-buffer-same-window buffer))
   ;; Don't track undo information for this buffer
   (setq buffer-undo-list t)
-  (notmuch-tree-worker query query-context target open-target unthreaded oldest-first)
+  (notmuch-tree-worker query query-context target open-target unthreaded sort-order)
   (setq notmuch-tree-parent-buffer parent-buffer)
   (setq truncate-lines t))
 
@@ -1202,7 +1203,7 @@ search results and that are also tagged with the given TAG."
 		  nil
 		  notmuch-tree-unthreaded
 		  nil
-		  notmuch-search-oldest-first)))
+		  notmuch-search-sort-order)))
 
 ;;; _
 
