@@ -40,6 +40,10 @@
 
 #include <xapian.h>
 
+#if HAVE_SFSEXP
+#include <sexp.h>
+#endif
+
 /* Bit masks for _notmuch_database::features.  Features are named,
  * independent aspects of the database schema.
  *
@@ -232,6 +236,7 @@ struct _notmuch_database {
      */
     unsigned long view;
     Xapian::QueryParser *query_parser;
+    Xapian::Stem *stemmer;
     Xapian::TermGenerator *term_gen;
     Xapian::RangeProcessor *value_range_processor;
     Xapian::RangeProcessor *date_range_processor;
@@ -300,4 +305,38 @@ _notmuch_database_setup_standard_query_fields (notmuch_database_t *notmuch);
 notmuch_status_t
 _notmuch_database_setup_user_query_fields (notmuch_database_t *notmuch);
 
+#if __cplusplus
+/* query.cc */
+notmuch_status_t
+_notmuch_query_string_to_xapian_query (notmuch_database_t *notmuch,
+				       std::string query_string,
+				       Xapian::Query &output,
+				       std::string &msg);
+/* parse-sexp.cc */
+notmuch_status_t
+_notmuch_sexp_string_to_xapian_query (notmuch_database_t *notmuch, const char *querystr,
+				      Xapian::Query &output);
+
+notmuch_status_t
+_notmuch_query_expand (notmuch_database_t *notmuch, const char *field, Xapian::Query subquery,
+		       Xapian::Query &output, std::string &msg);
+
+/* regexp-fields.cc */
+notmuch_status_t
+_notmuch_regexp_to_query (notmuch_database_t *notmuch, Xapian::valueno slot, std::string field,
+			  std::string regexp_str,
+			  Xapian::Query &output, std::string &msg);
+
+/* thread-fp.cc */
+notmuch_status_t
+_notmuch_query_name_to_query (notmuch_database_t *notmuch, const std::string name,
+			      Xapian::Query &output);
+
+#if HAVE_SFSEXP
+/* parse-sexp.cc */
+notmuch_status_t
+_notmuch_sexp_string_to_xapian_query (notmuch_database_t *notmuch, const char *querystr,
+				      Xapian::Query &output);
+#endif
+#endif
 #endif
