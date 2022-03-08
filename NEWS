@@ -1,3 +1,31 @@
+Notmuch 0.34 (2021-10-20)
+=========================
+
+General
+-------
+
+An optional new s-expression based query parser is available if
+notmuch is built with the `sfsexp` library. See
+notmuch-sexp-queries(7) for syntax, and use `notmuch config get
+built_with.sexpr_queries` to check if notmuch is compiled with
+s-expression query support.
+
+CLI
+---
+
+Support multiple `Delivered-To` headers in notmuch-reply(1).
+
+Emacs
+-----
+
+Functions are now allowed in `notmuch-search-result-format`.
+
+Improvements to unthreaded view on large threads.
+
+Tolerate bad/missing working directory for most commands.
+
+Allow customization of tree drawing symbols in notmuch-tree mode.
+
 Notmuch 0.33.2 (2021-09-30)
 ===========================
 
@@ -22,7 +50,7 @@ Notmuch 0.33 (2021-09-03)
 Library
 -------
 
-Correct documentatation about transactions.
+Correct documentation about transactions.
 
 Add a configurable automatic commit of transactions. See
 `database.autocommit` in notmuch-config(1).
@@ -191,7 +219,7 @@ notmuch_database_remove_message or notmuch_message_delete in one
 session has been fixed.
 
 As always, the canonical source of API documentation is
-`lib/notmuch.h`, or the doxygen formatted documentation in `notmuch(3)`
+`lib/notmuch.h`, or the doxygen formatted documentation in `notmuch(3)`.
 
 CLI
 ---
@@ -257,12 +285,12 @@ Fix for exclude tags in notmuch2 bindings.
 Build
 -----
 
-Portability update for T360-symbol-hiding
+Portability update for T360-symbol-hiding.
 
 Library
 -------
 
-Fix for memory error in notmuch_database_get_config_list
+Fix for memory error in notmuch_database_get_config_list.
 
 Notmuch 0.31.2 (2020-11-08)
 ===========================
@@ -477,7 +505,7 @@ Command Line Interface
 ----------------------
 
 `notmuch show` now supports --body=false and --include-html with
---format=text
+--format=text.
 
 Fix several performance problems with `notmuch reindex`.
 
