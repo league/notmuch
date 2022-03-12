@@ -10,11 +10,12 @@
     let
       inherit (nixpkgs) lib;
       each = lib.genAttrs [ "x86_64-darwin" "x86_64-linux" ];
+      version = lib.removeSuffix "\n" (lib.readFile ./version.txt);
     in {
 
       overlay = final: prev: {
         notmuch = prev.notmuch.overrideAttrs (old: {
-          version = lib.removeSuffix "\n" (lib.readFile ./version.txt);
+          inherit version;
           src = ./.;
           buildInputs = old.buildInputs ++ [
             final.bash-completion
@@ -22,11 +23,26 @@
             (final.python3.withPackages (p: [ p.setuptools p.cffi p.pytest ]))
           ];
         });
+
+        emacsPackages = prev.emacsPackages.overrideScope' (_: super: {
+          notmuch = super.notmuch.overrideAttrs (_: {
+            name = "emacs-notmuch-${version}";
+            inherit version;
+            src = ./.;
+          });
+        });
       };
 
       packages = each (system:
-        let pkgs = nixpkgs.legacyPackages.${system};
-        in { inherit (self.overlay pkgs pkgs) notmuch; });
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ self.overlay ];
+          };
+        in {
+          inherit (pkgs) notmuch;
+          emacs-notmuch = pkgs.emacsPackages.notmuch;
+        });
 
       checks = each (system: {
         pre-commit = pre-commit-hooks.lib.${system}.run {
