@@ -51,4 +51,5 @@ jobs:
           fi
       - run: nix flake metadata
       - run: nix flake check
-      - run: nix build --print-build-logs .#notmuch.{out,emacs,man,info}
+      - run: nix build --print-build-logs .#notmuch.{out,man,info}
+      - run: nix build --print-build-logs .#emacs-notmuch
