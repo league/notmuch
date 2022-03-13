@@ -24,13 +24,14 @@
           ];
         });
 
-        emacsPackages = prev.emacsPackages.overrideScope' (_: super: {
-          notmuch = super.notmuch.overrideAttrs (_: {
-            name = "emacs-notmuch-${version}";
-            inherit version;
-            src = ./.;
+        emacsPackagesFor = em:
+          (prev.emacsPackagesFor em).overrideScope' (_: super: {
+            notmuch = super.notmuch.overrideAttrs (_: {
+              name = "emacs-notmuch-${version}";
+              inherit version;
+              src = ./.;
+            });
           });
-        });
       };
 
       packages = each (system:
