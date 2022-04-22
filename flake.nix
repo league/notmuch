@@ -28,7 +28,9 @@
           (prev.emacsPackagesFor em).overrideScope' (_: super: {
             notmuch = super.notmuch.overrideAttrs (_: {
               name = "emacs-notmuch-${version}";
-              inherit version;
+              # Emacs will use version-to-list, which will choke on "0.36~rc1",
+              # so lose the suffix.
+              version = lib.head (lib.strings.split "~" version);
               src = ./.;
             });
           });
