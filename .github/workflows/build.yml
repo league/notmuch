@@ -3,20 +3,22 @@ name: "Build"
 "on":
   pull_request:
   push:
-  schedule:
-    # Weekly
-    - cron: '0 15 * * FRI'
 jobs:
+  pre_build:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v3.4.1
+        with:
+          concurrent_skipping: 'same_content'
   build:
+    needs: pre_build
+    if: ${{ needs.pre_build.outputs.should_skip != 'true' }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # Currently some crypto-related test failures on
-        # ‘nixpkgs-unstable’ or I’d test that too.
-        nixpkgs:
-          - "true"
-          - "nxp=release-21.11"
-          - "nxp=release-21.05;pch=ff9c0b459ddc4b79c06e19d44251daa8e9cd1746"
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -29,18 +31,6 @@ jobs:
         with:
           name: league
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-      - run: |
-          nxp=""
-          pch=""
-          eval "${{ matrix.nixpkgs }}"
-          if [[ "$nxp" != "" ]]; then
-            nix flake lock --override-input nixpkgs "nixpkgs/$nxp"
-          fi
-          if [[ "$pch" != "" ]]; then
-            nix flake lock --override-input pre-commit-hooks \
-              "github:cachix/pre-commit-hooks.nix/$pch"
-          fi
-      - run: nix flake metadata
       - run: nix flake check
       - run: nix build --print-build-logs .#notmuch.{out,man,info}
       - run: nix build --print-build-logs .#emacs-notmuch
