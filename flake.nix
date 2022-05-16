@@ -10,7 +10,8 @@
     let
       inherit (nixpkgs) lib;
       each = lib.genAttrs [ "x86_64-darwin" "x86_64-linux" ];
-      version = lib.removeSuffix "\n" (lib.readFile ./version.txt);
+      version = lib.replaceStrings [ "~" ] [ "-" ]
+        (lib.removeSuffix "\n" (lib.readFile ./version.txt));
     in {
 
       overlay = final: prev: {
@@ -30,7 +31,7 @@
               name = "emacs-notmuch-${version}";
               # Emacs will use version-to-list, which will choke on "0.36~rc1",
               # so lose the suffix.
-              version = lib.head (lib.strings.split "~" version);
+              inherit version;
               src = ./.;
             });
           });
