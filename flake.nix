@@ -10,8 +10,8 @@
     let
       inherit (nixpkgs) lib;
       each = lib.genAttrs [ "x86_64-darwin" "x86_64-linux" ];
-      version = lib.replaceStrings [ "~" ] [ "-" ]
-        (lib.removeSuffix "\n" (lib.readFile ./version.txt));
+      version = lib.head (lib.strings.split "~"
+        (lib.removeSuffix "\n" (lib.readFile ./version.txt)));
     in {
 
       overlay = final: prev: {
