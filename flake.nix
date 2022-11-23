@@ -14,7 +14,7 @@
         (lib.removeSuffix "\n" (lib.readFile ./version.txt)));
     in {
 
-      overlay = final: prev: {
+      overlays.default = final: prev: {
         notmuch = prev.notmuch.overrideAttrs (old: {
           inherit version;
           src = ./.;
@@ -41,7 +41,7 @@
         let
           pkgs = import nixpkgs {
             inherit system;
-            overlays = [ self.overlay ];
+            overlays = lib.attrValues self.overlays;
           };
         in {
           inherit (pkgs) notmuch;
@@ -58,7 +58,7 @@
         };
       });
 
-      devShell = each (system:
+      devShells = each (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
 
@@ -70,10 +70,12 @@
             nix-linter
           ];
 
-        in pkgs.mkShell {
-          inherit (self.checks.${system}.pre-commit) shellHook;
-          buildInputs = pkg-inputs ++ check-tools;
-          NOTMUCH_SKIP_TESTS = "libconfig.18 libconfig.31";
+        in {
+          default = pkgs.mkShell {
+            inherit (self.checks.${system}.pre-commit) shellHook;
+            buildInputs = pkg-inputs ++ check-tools;
+            NOTMUCH_SKIP_TESTS = "libconfig.18 libconfig.31";
+          };
         });
     };
 }
