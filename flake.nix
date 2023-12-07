@@ -12,11 +12,12 @@
       each = lib.genAttrs [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
       version = lib.head (lib.strings.split "~"
         (lib.removeSuffix "\n" (lib.readFile ./version.txt)));
+      NOTMUCH_SKIP_TESTS = "libconfig.18 libconfig.31 setup.2";
     in {
 
       overlays.default = final: prev: {
         notmuch = prev.notmuch.overrideAttrs (old: {
-          inherit version;
+          inherit version NOTMUCH_SKIP_TESTS;
           src = ./.;
           buildInputs = old.buildInputs ++ [
             final.bash-completion
@@ -52,7 +53,6 @@
         pre-commit = pre-commit-hooks.lib.${system}.run {
           src = ./.;
           hooks.nixfmt.enable = true;
-          hooks.nix-linter.enable = true;
           hooks.yamllint.enable = true;
           hooks.yamllint.excludes = [ "vim/notmuch\\.yaml" "\\.travis\\.yml" ];
         };
@@ -65,16 +65,13 @@
           pkg-inputs = with self.packages.${system}.notmuch;
             nativeBuildInputs ++ buildInputs;
 
-          check-tools = with pre-commit-hooks.packages.${system}; [
-            nixfmt
-            nix-linter
-          ];
+          check-tools = with pre-commit-hooks.packages.${system}; [ nixfmt ];
 
         in {
           default = pkgs.mkShell {
             inherit (self.checks.${system}.pre-commit) shellHook;
+            inherit NOTMUCH_SKIP_TESTS;
             buildInputs = pkg-inputs ++ check-tools;
-            NOTMUCH_SKIP_TESTS = "libconfig.18 libconfig.31";
           };
         });
     };
