@@ -1,0 +1,17 @@
+---
+image: nixos/23.11
+packages:
+  - nixos.cachix
+secrets:
+  - d1036bce-7d23-47b9-a51b-c07f8f9b9b24
+environment:
+  NIX_CONFIG: "experimental-features = nix-command flakes"
+tasks:
+  - build: |
+      cachix use league
+      cd notmuch
+      nix build --print-build-logs .#{,emacs-}notmuch
+      if [[ -r "$HOME/.config/cachix/authtoken" ]]; then
+          cachix authtoken --stdin <"$HOME/.config/cachix/authtoken"
+          readlink result* | cachix push league
+      fi
