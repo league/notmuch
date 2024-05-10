@@ -1,0 +1,6 @@
+---
+image: guix
+tasks:
+  - build: |
+      cd notmuch
+      guix build -f guix.scm
