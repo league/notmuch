@@ -1,0 +1,4 @@
+;; -*- scheme -*-
+(authorizations
+ (version 0)
+ (("B5F8 5CEC FFEA 88B5 73AC  9581 C31D 301C 137A BA9A")))
